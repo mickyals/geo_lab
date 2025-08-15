@@ -1,0 +1,1 @@
+# Weight initialization strategies (standard, Xavier, SIREN-specific, etc.)

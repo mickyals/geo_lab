@@ -1,0 +1,1 @@
+#simple stuff like setting seed and getting device and setting device and building a model summary

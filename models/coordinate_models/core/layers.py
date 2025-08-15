@@ -1,0 +1,1 @@
+# Base layer types: Linear, FourierLayer, SIRENLayer
