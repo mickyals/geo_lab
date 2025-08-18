@@ -7,33 +7,40 @@ EMBEDDINGS = {}
 
 
 
-def register_embedding(name):
+def register_embedding(name, description=""):
     """
-    Registers an embedding with the given name.
+    Decorator to register an embedding.
 
     Args:
         name (str): The name of the embedding.
-
-    Returns:
-        function: A decorator that registers the embedding with the given name.
+        description (str, optional): A description of the embedding. Defaults to "".
 
     Raises:
-        ValueError: If the embedding with the given name already exists.
+        ValueError: If an embedding with the same name already exists.
+
+    Returns:
+        The embedding class.
     """
+    name_upper = name.upper()
+
     def decorator(cls):
         """
-        Registers an embedding with the given name.
+        Decorator function to register an embedding class.
 
         Args:
-            cls (type): The embedding class to register.
+            cls (type): The embedding class.
 
         Raises:
-            ValueError: If the embedding with the given name already exists.
+            ValueError: If an embedding with the same name already exists.
+
+        Returns:
+            The embedding class.
         """
-        if name in EMBEDDINGS:
-            raise ValueError(f"Embedding with name {name} already exists.")
-        EMBEDDINGS[name] = cls
+        if name_upper in EMBEDDINGS:
+            raise ValueError(f"Embedding with name {name_upper} already exists.")
+        EMBEDDINGS[name_upper] = {"cls": cls, "description": description}
         return cls
+
     return decorator
 
 
@@ -58,12 +65,12 @@ def get_embedding(name, **kwargs):
         raise ValueError(f"Embedding with name {name} does not exist.")
 
     # Return an instance of the embedding with the given keyword arguments
-    return EMBEDDINGS[name](**kwargs)
+    return EMBEDDINGS[name]["cls"](**kwargs)
 
 #==============================================================================
 # GaussianFourierEmbedding
 #==============================================================================
-@register_embedding('GAUSSIAN_POSITIONAL')
+@register_embedding('GAUSSIAN_POSITIONAL', 'Gaussian positional encoding')
 class GaussianFourierEmbedding(nn.Module):
     def __init__(self, input_dim, mapping_dim, scale):
         """
@@ -130,7 +137,7 @@ class GaussianFourierEmbedding(nn.Module):
 #==============================================================================
 # PositionalEmbedding
 #==============================================================================
-@register_embedding('GENERAL_POSITIONAL')
+@register_embedding('GENERAL_POSITIONAL', 'General positional encoding scale 1 is basic positional encoding')
 class PositionalEmbedding(nn.Module):
     def __init__(self, input_dim, mapping_dim, scale):
         """
@@ -216,7 +223,7 @@ class PositionalEmbedding(nn.Module):
 # SphericalGridEmbedding
 #==============================================================================
 
-@register_embedding('SPHERE_GRID')
+@register_embedding('SPHERE_GRID', 'Spherical grid embedding from https://arxiv.org/pdf/2306.17624')
 class SphericalGridEmbedding(nn.Module):
 
     def __init__(self, scale, r_min, r_max=1.0):
@@ -304,7 +311,7 @@ class SphericalGridEmbedding(nn.Module):
 # SphericalCartesianEmbedding
 #==============================================================================
 
-@register_embedding('SPHERE_C')
+@register_embedding('SPHERE_C', 'Spherical cartesian embedding from https://arxiv.org/pdf/2306.17624')
 class SphericalCartesianEmbedding(nn.Module):
     def __init__(self, scale, r_min, r_max=1.0):
         """
@@ -378,7 +385,7 @@ class SphericalCartesianEmbedding(nn.Module):
 #================================================================================
 # SphericalMultiScaleEmbedding
 #================================================================================
-@register_embedding('SPHERE_M')
+@register_embedding('SPHERE_M', 'Spherical multi-scale embedding from https://arxiv.org/pdf/2306.17624')
 class SphericalMultiScaleEmbedding(nn.Module):
     def __init__(self, scale, r_min, r_max=1.0):
         """
@@ -475,7 +482,7 @@ class SphericalMultiScaleEmbedding(nn.Module):
 #================================================================================
 # DoubleFourierSphericalEmbedding
 #================================================================================
-@register_embedding('DFS')
+@register_embedding('DFS', 'DoubleFourierSphericalEmbedding from https://arxiv.org/pdf/2306.17624')
 class DoubleFourierSphericalEmbedding(nn.Module):
     def __init__(self, scale, r_lat_min, r_lon_min, r_max=1.0):
         """
@@ -556,7 +563,7 @@ class DoubleFourierSphericalEmbedding(nn.Module):
 #================================================================================
 # SphericalCartesianPlusEmbedding
 #================================================================================
-@register_embedding('SPHERE_C+')
+@register_embedding('SPHERE_C+', 'SphericalCartesianPlusEmbedding from https://arxiv.org/pdf/2306.17624')
 class SphericalCartesianPlusEmbedding(nn.Module):
     def __init__(self, scale, r_min, r_max=1.0):
         """
@@ -639,7 +646,7 @@ class SphericalCartesianPlusEmbedding(nn.Module):
 #================================================================================
 # SphericalMultiscalePlusEmbedding
 #================================================================================
-@register_embedding('SPHERE_M+')
+@register_embedding('SPHERE_M+', 'SphericalMultiscalePlusEmbedding from https://arxiv.org/pdf/2306.17624')
 class SphericalMultiScalePlusEmbedding(nn.Module):
     """
     Module for generating multiscale embeddings for spherical coordinates.

@@ -7,40 +7,95 @@ from ..core.activations import get_activation
 
 
 class BaseLayer(nn.Module):
+    """
+    Base layer class for neural networks.
+
+    Args:
+        in_features (int): Number of input features.
+        out_features (int): Number of output features.
+        initializer (str): Initializer for the linear layer.
+        activation (str): Activation function for the linear layer.
+        is_last (bool, optional): Whether it is the last layer in the network. Defaults to False.
+        initializer_kwargs (dict, optional): Keyword arguments for the initializer. Defaults to None.
+        activation_kwargs (dict, optional): Keyword arguments for the activation function. Defaults to None.
+    """
     def __init__(self, in_features, out_features, initializer, activation, is_last=False, initializer_kwargs=None, activation_kwargs=None):
+        """
+        Initialize the BaseLayer class.
+        """
         super().__init__()
+        # Initialize the input and output features
         self.in_features = in_features
         self.out_features = out_features
+        # Initialize the linear layer
         self.linear = nn.Linear(in_features, out_features)
+        # Initialize the activation function
+        self.activation = get_activation(activation, **(activation_kwargs if activation_kwargs is not None else {}))
+        # Initialize the weight initialization method
+        self.initializer = get_initializer(initializer,  **(initializer_kwargs if initializer_kwargs is not None else {}))
+        # Initialize whether it is the last layer in the network
         self.is_last = is_last
+        # Initialize the initializer keyword arguments
         self.initializer_kwargs = initializer_kwargs if initializer_kwargs is not None else {}
-        self.initializer = get_initializer(initializer,  **self.initializer_kwargs)
+        # Initialize the activation keyword arguments
         self.activation_kwargs = activation_kwargs if activation_kwargs is not None else {}
-        self.activation = get_activation(activation, **self.activation_kwargs)
+        # Apply the weight initialization to the linear layer
         self.initializer(self.linear)
 
     def forward(self, x):
+        """
+        Forward pass of the BaseLayer.
+
+        Args:
+            x (torch.Tensor): Input tensor.
+
+        Returns:
+            torch.Tensor: Output tensor after applying the linear layer
+            and activation function (if it is the last layer).
+        """
+        # If the layer is the last layer, just apply the linear layer
         if self.is_last:
             return self.linear(x)
+        # Otherwise, apply the linear layer and the activation function
         return self.activation(self.linear(x))
 
 
 class ResidualBaseBlock(nn.Module):
+    """
+    Residual block for the neural network.
+
+    Args:
+        in_features (int): Number of input features.
+        out_features (int): Number of output features.
+        initializer (str): Initializer for the linear layers.
+        activation (str): Activation function for the linear layers.
+        residual_weight (float, optional): Weight for the residual connection. Defaults to None, which means no weighting.
+        initializer_kwargs (dict, optional): Keyword arguments for the initializer. Defaults to None.
+        activation_kwargs (dict, optional): Keyword arguments for the activation function. Defaults to None.
+    """
     def __init__(self, in_features, out_features, initializer, activation, residual_weight=None, initializer_kwargs=None, activation_kwargs=None):
+        """
+        Initialize the ResidualBaseBlock class.
+        """
         super().__init__()
+        # Activation function for the linear layers
         self.activation = get_activation(activation, **activation_kwargs)
+        # Weight for the residual connection
         self.residual_weight = residual_weight
 
+        # Linear layers
         self.linear1 = nn.Linear(in_features, out_features)
         self.linear2 = nn.Linear(out_features, out_features)
 
         # Only create a projection if needed
         if in_features != out_features:
+            # Residual layer
             self.residual = nn.Linear(in_features, out_features)
         else:
+            # Identity layer for the residual connection
             self.residual = nn.Identity()
 
-        # Initialize
+        # Initialize the linear layers
         init_fn = get_initializer(initializer, **initializer_kwargs)
         init_fn(self.linear1)
         init_fn(self.linear2)
@@ -48,13 +103,30 @@ class ResidualBaseBlock(nn.Module):
             init_fn(self.residual)
 
     def forward(self, x):
+        """
+        Forward pass of the ResidualBaseBlock.
+
+        Args:
+            x (torch.Tensor): Input tensor.
+
+        Returns:
+            torch.Tensor: Output tensor after applying the residual block.
+        """
+        # Apply the first linear layer and activation function
         main_path = self.activation(self.linear1(x))
+
+        # Apply the second linear layer and activation function
         main_path = self.activation(self.linear2(main_path))
+
+        # Apply the residual layer (either identity or linear)
         res = self.residual(x)
 
+        # Add or weight the main path and residual path
         if self.residual_weight is None:
+            # Add the main path and residual path
             return main_path + res
         else:
+            # Weight the main path and residual path
             return (1 - self.residual_weight) * main_path + self.residual_weight * res
 
 

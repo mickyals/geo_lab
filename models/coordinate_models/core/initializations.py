@@ -7,20 +7,70 @@ import math
 INITIALIZERS = {}
 
 
-def register_initializer(name):
+def register_initializer(name, desc=""):
+    """
+    Decorator to register an initializer.
+
+    Args:
+        name (str): The name of the initializer.
+        desc (str, optional): The description of the initializer. Defaults to "".
+
+    Raises:
+        ValueError: If an initializer with the same name already exists.
+
+    Returns:
+        The initializer class.
+    """
+    # Convert the name to uppercase for consistency
+    name = name.upper()
+
     def decorator(cls):
+        """
+        Decorator to register an initializer.
+
+        Args:
+            cls (type): The initializer class.
+
+        Raises:
+            ValueError: If an initializer with the same name already exists.
+
+        Returns:
+            The initializer class.
+        """
+        # Check if the initializer with the same name already exists
         if name in INITIALIZERS:
             raise ValueError(f"Initializer with name {name} already exists.")
-        INITIALIZERS[name] = cls
+
+        # Register the initializer with its class and description
+        INITIALIZERS[name] = {'cls': cls, 'desc': desc}
         return cls
+
     return decorator
 
 
 def get_initializer(name, **kwargs):
+    """
+    Returns an instance of the initializer with the given name and keyword arguments.
+
+    Args:
+        name (str): The name of the initializer.
+        **kwargs: Keyword arguments to initialize the initializer.
+
+    Returns:
+        nn.Module: An instance of the initializer with the given name and keyword arguments.
+
+    Raises:
+        ValueError: If the initializer with the given name does not exist.
+    """
+    # Convert the name to uppercase for consistency
     name = name.upper()
+
+    # Check if the initializer with the given name exists
     if name not in INITIALIZERS:
         raise ValueError(f"Initializer with name {name} does not exist.")
-    return INITIALIZERS[name](**kwargs)
+
+    # Return an instance of the initializer with the given keyword arguments
+    return INITIALIZERS[name]['cls'](**kwargs)
 
 
 
@@ -29,7 +79,7 @@ def get_initializer(name, **kwargs):
 # SIREN-specific initializers
 #===============================================================================
 
-@register_initializer("SIREN")
+@register_initializer("SIREN", desc="SIREN-specific initialization")
 class SirenInit:
     def __init__(self, in_features, is_first=False, omega=30):
         """
@@ -72,7 +122,7 @@ class SirenInit:
 # FINER-specific initializers
 #===============================================================================
 
-@register_initializer("FINER")
+@register_initializer("FINER", desc="FINER-specific initialization")
 class FinerInit:
     """
     Initializer for the Finer model.
@@ -133,7 +183,7 @@ class FinerInit:
                 linear_layer.bias.uniform_(-self.k, self.k)
 
 
-@register_initializer("XAVIER_UNIFORM_FINER")
+@register_initializer("XAVIER_UNIFORM_FINER", desc="Xavier uniform initialization with a finer scale")
 class XavierUniformFinerInit:
     """
     Initializer that applies the Xavier uniform initialization with a finer scale.
@@ -181,7 +231,7 @@ class XavierUniformFinerInit:
             if linear_layer.bias is not None:
                 linear_layer.bias.uniform_(-self.k, self.k)
 
-@register_initializer("XAVIER_FINER_NORM")
+@register_initializer("XAVIER_FINER_NORM", desc="Xavier normal initialization with a finer scale")
 class XavierNormFinerInit:
     """
     Initializer that applies the Xavier normal initialization with a finer scale.
@@ -238,7 +288,7 @@ class XavierNormFinerInit:
 # Standard initializers
 #===============================================================================
 
-@register_initializer("XAVIER_UNIFORM")
+@register_initializer("XAVIER_UNIFORM", desc="Xavier uniform initialization")
 class XavierUniformInit:
     """
     Class for initializing the weights of a linear layer with the Xavier uniform
@@ -262,7 +312,7 @@ class XavierUniformInit:
         with torch.no_grad():
             init.xavier_uniform_(linear_layer.weight, gain=self.gain)
 
-@register_initializer("XAVIER_NORMAL")
+@register_initializer("XAVIER_NORMAL", desc="Xavier normal initialization")
 class XavierNormalInit:
     """
     Class for initializing the weights of a linear layer with the Xavier normal
@@ -301,7 +351,7 @@ class XavierNormalInit:
             # in turn allows the weights to be initialized with a larger range
             # of values.
 
-@register_initializer("NORMAL")
+@register_initializer("NORMAL", desc="Normal initialization")
 class NormalInit:
     """
     Class for initializing the weights of a linear layer with a normal
@@ -343,7 +393,7 @@ class NormalInit:
             # and the `std` parameter specifies the standard deviation of the
             # normal distribution. The default values are 0.0 and 0.1 respectively.
 
-@register_initializer("UNIFORM")
+@register_initializer("UNIFORM", desc="Uniform initialization")
 class UniformInit:
     def __init__(self, a=-0.1, b=0.1):
         """
@@ -384,7 +434,7 @@ class UniformInit:
             respectively.
             """
 
-@register_initializer("IDENTITY")
+@register_initializer("IDENTITY", desc="Identity initialization")
 class IdentityInit:
     def __call__(self, linear_layer):
         """
@@ -404,7 +454,7 @@ class IdentityInit:
             # Set the weights to an identity matrix.
             linear_layer.weight.copy_(torch.eye(linear_layer.weight.shape[0]))
 
-@register_initializer("ORTHOGONAL")
+@register_initializer("ORTHOGONAL", desc="Orthogonal initialization")
 class OrthogonalInit:
     """
     Initializes the weights of a linear layer with an orthogonal matrix.

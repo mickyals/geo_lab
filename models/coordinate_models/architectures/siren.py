@@ -7,6 +7,23 @@ from ..core.embeddings import get_embedding
 
 
 class SIREN(nn.Module):
+    """
+    Initializes a SIREN network.
+
+    Args:
+        in_features (int): Number of input features.
+        hidden_features (int): Number of hidden features in each layer.
+        out_features (int): Number of output features.
+        num_layers (int): Number of layers in the network.
+        omega (float, optional): Frequency parameter. Defaults to 30.
+        initializer (str, optional): Initializer for the layers. Defaults to 'SIREN'.
+        activation (str, optional): Activation function for the layers. Defaults to 'SINE'.
+        residual_weight (float, optional): Weight for residual connections. Defaults to None.
+        residual (bool, optional): Whether to use residual connections. Defaults to False.
+        use_embedding (bool, optional): Whether to use an embedding layer. Defaults to False.
+        embedding_type (str, optional): Type of embedding layer. Defaults to 'GAUSSIAN_POSITIONAL'.
+        embedding_kwargs (dict, optional): Keyword arguments for the embedding layer. Defaults to None.
+    """
     def __init__(self, in_features,
                  hidden_features,
                  out_features,
@@ -20,6 +37,8 @@ class SIREN(nn.Module):
                  embedding_type='GAUSSIAN_POSITIONAL',
                  embedding_kwargs=None,
                  ):
+
+
         super().__init__()
 
         self.in_features = in_features
@@ -98,3 +117,4 @@ class SIREN(nn.Module):
         return self.net(x)
 
 
+SIREN_REGISTRY = {"siren": SIREN}

@@ -1,0 +1,19 @@
+model:
+  name: siren
+  model_kwargs:
+    in_features: 2
+    hidden_features: 256
+    out_features: 3
+    num_layers: 5
+    omega: 30
+    initializer: SIREN
+    activation: SINE
+    residual_weight: 0.6
+    residual: true
+
+use_embedding: true
+embedding_name: SPHERE_GRID
+embedding_kwargs:
+  scale: 10
+  r_min: 0.01
+  r_max: 1.0
