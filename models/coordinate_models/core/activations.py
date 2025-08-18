@@ -8,7 +8,66 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+ACTIVATIONS = {}
 
+
+
+def register_activation(name):
+    """
+    Register an activation function.
+
+    Args:
+        name (str): The name of the activation function.
+        activation (callable): The activation function.
+
+    Raises:
+        ValueError: If an activation function with the same name already exists.
+
+    Returns:
+        The activation function.
+    """
+    def decorator(cls):
+        """
+        Decorator to register an activation function.
+
+        Args:
+            cls (type): The activation function class.
+
+        Raises:
+            ValueError: If an activation function with the same name already exists.
+
+        Returns:
+            The activation function class.
+        """
+        if name in ACTIVATIONS:
+            raise ValueError(f"Activation with name {name} already exists.")
+        ACTIVATIONS[name] = cls
+        return cls
+    return decorator
+
+
+
+def get_activation(name, **kwargs):
+    """
+    Get an activation function based on its name.
+
+    Args:
+        name (str): The name of the activation function.
+        **kwargs: Additional keyword arguments to pass to the activation function.
+
+    Returns:
+        nn.Module: The activation function.
+
+    Raises:
+        ValueError: If the activation function with the given name does not exist.
+    """
+    name = name.upper()
+    # Check if the activation function exists
+    if name not in ACTIVATIONS:
+        raise ValueError(f"Activation with name {name} does not exist.")
+
+    # Return the activation function
+    return ACTIVATIONS[name](**kwargs)
 
 def generate_alpha(x):
     """
@@ -33,6 +92,7 @@ def generate_alpha(x):
 # Sine activation
 #===================================================================
 
+@register_activation("SINE")
 class sine_activation(nn.Module):
     """
     Sine activation module.
@@ -73,6 +133,7 @@ class sine_activation(nn.Module):
 #===================================================================
 # Finer activation
 #===================================================================
+@register_activation("FINER")
 class sine_finer(nn.Module):
     """
     Sine activation module with a finer scale.
@@ -115,7 +176,7 @@ class sine_finer(nn.Module):
 #===================================================================
 # Gaussian activation
 #===================================================================
-
+@register_activation("GAUSSIAN")
 class gaussian_activation(nn.Module):
     """
     Gaussian activation module.
@@ -145,7 +206,7 @@ class gaussian_activation(nn.Module):
 #===================================================================
 # Finer Gaussian activation
 #===================================================================
-
+@register_activation("GAUSSIAN_FINER")
 class gaussian_finer(nn.Module):
     """
     GaussianFiner activation module.
@@ -197,7 +258,7 @@ class gaussian_finer(nn.Module):
 #===================================================================
 # Wire activation
 #===================================================================
-
+@register_activation("WIRE")
 class wire_activation(nn.Module):
     """
     Wire activation module.
@@ -250,7 +311,7 @@ class wire_activation(nn.Module):
 #===================================================================
 # Finer Wire activation
 #===================================================================
-
+@register_activation("WIRE_FINER")
 class wire_finer(nn.Module):
     """
     WireFiner activation module.
@@ -320,6 +381,7 @@ class wire_finer(nn.Module):
 #===================================================================
 # Hyperbolic Sine activation
 #===================================================================
+@register_activation("HOSC")
 class hosc_activation(nn.Module):
     """
     Hyperbolic Sine activation module.
@@ -362,7 +424,7 @@ class hosc_activation(nn.Module):
 #===================================================================
 # Finer Hyperbolic Sine activation
 #===================================================================
-
+@register_activation("HOSC_FINER")
 class hosc_finer(nn.Module):
     """
     Hyperbolic sine activation module with a finer scale.
@@ -425,7 +487,7 @@ class hosc_finer(nn.Module):
 #===================================================================
 # Sinc activation
 #===================================================================
-
+@register_activation("SINC")
 class sinc_activation(nn.Module):
     """
     Sinc activation module.
