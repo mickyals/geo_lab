@@ -531,3 +531,49 @@ class sinc_activation(nn.Module):
         # Apply the sinc activation function to the input tensor.
         # The frequency parameter is self.omega.
         return torch.sinc(self.omega * x)
+
+
+#===================================================================
+# Other activations
+#===================================================================
+
+@register_activation("RELU", description="ReLU activation")
+class relu(nn.Module):
+    def __init__(self, ):
+        super().__init__()
+
+    def forward(self, x):
+        return F.relu(x)
+
+@register_activation("LEAKY_RELU", description="Leaky ReLU activation")
+class leaky_relu(nn.Module):
+    def __init__(self, negative_slope=0.01):
+        super().__init__()
+        self.negative_slope = negative_slope
+
+    def forward(self, x):
+        return F.leaky_relu(x, self.negative_slope)
+
+@register_activation("SILU", description="SILU activation")
+class silu(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x):
+        return F.silu(x)
+
+@register_activation("SIGMOID", description="Sigmoid activation")
+class sigmoid(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x):
+        return F.sigmoid(x)
+
+@register_activation("TANH", description="Tanh activation")
+class tanh(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x):
+        return F.tanh(x)

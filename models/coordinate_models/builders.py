@@ -2,10 +2,14 @@
 # Example: Neural DMD can use builders to combine encoder + dynamics + decoder networks'
 
 from .architectures.siren import SIREN_REGISTRY
+from .architectures.neuralDMD import DMD_REGISTRY
+from .architectures.NIF import NIF_REGISTRY
 from .core.embeddings import get_embedding
 
 MODEL_REGISTRY = {
     **SIREN_REGISTRY,
+    **DMD_REGISTRY,
+    **NIF_REGISTRY
 
 }
 

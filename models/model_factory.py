@@ -9,6 +9,7 @@ from .coordinate_models.builders import build_model
 from .coordinate_models.core.embeddings import EMBEDDINGS
 from .coordinate_models.core.initializations import INITIALIZERS
 from .coordinate_models.core.activations import ACTIVATIONS
+from .coordinate_models.core.layers import LAYERS
 
 
 def create_model(config):
@@ -90,3 +91,15 @@ def list_activations():
     """
     # Return the keys of the activations registry, which represent the available activations
     return list(ACTIVATIONS.keys())
+
+
+
+def list_layers():
+    """
+    Return a list of all available layers.
+
+    Returns:
+        list: A list of strings representing the names of the available layers.
+    """
+    # Return the keys of the layers registry, which represent the available layers
+    return list(LAYERS.keys())

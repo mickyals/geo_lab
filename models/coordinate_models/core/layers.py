@@ -4,8 +4,46 @@ import torch.nn as nn
 from ..core.initializations import get_initializer
 from ..core.activations import get_activation
 
+LAYERS = {}
+
+def register_layer(name, description=""):
+    """
+    Decorator to register a layer.
+
+    Args:
+        name (str): The name of the layer.
+        description (str, optional): A description of the layer. Defaults to "".
+
+    Raises:
+        ValueError: If a layer with the same name already exists.
+
+    Returns:
+        The layer class.
+    """
+    name_upper = name.upper()
+
+    def decorator(cls):
+        """
+        Decorator function to register an embedding class.
+
+        Args:
+            cls (type): The embedding class.
+
+        Raises:
+            ValueError: If an embedding with the same name already exists.
+
+        Returns:
+            The embedding class.
+        """
+        if name_upper in LAYERS:
+            raise ValueError(f"Embedding with name {name_upper} already exists.")
+        LAYERS[name_upper] = {"cls": cls, "description": description}
+        return cls
+
+    return decorator
 
 
+@register_layer("BASE", "Base mlp layer allowing for custom initializer and activation")
 class BaseLayer(nn.Module):
     """
     Base layer class for neural networks.
@@ -35,10 +73,6 @@ class BaseLayer(nn.Module):
         self.initializer = get_initializer(initializer,  **(initializer_kwargs if initializer_kwargs is not None else {}))
         # Initialize whether it is the last layer in the network
         self.is_last = is_last
-        # Initialize the initializer keyword arguments
-        self.initializer_kwargs = initializer_kwargs if initializer_kwargs is not None else {}
-        # Initialize the activation keyword arguments
-        self.activation_kwargs = activation_kwargs if activation_kwargs is not None else {}
         # Apply the weight initialization to the linear layer
         self.initializer(self.linear)
 
@@ -60,6 +94,7 @@ class BaseLayer(nn.Module):
         return self.activation(self.linear(x))
 
 
+@register_layer("RESIDUAL", "Residual block allowing for custom initializer and activation")
 class ResidualBaseBlock(nn.Module):
     """
     Residual block for the neural network.

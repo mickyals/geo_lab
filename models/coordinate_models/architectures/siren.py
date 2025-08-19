@@ -41,32 +41,23 @@ class SIREN(nn.Module):
 
         super().__init__()
 
-        self.in_features = in_features
-        self.hidden_features = hidden_features
-        self.out_features = out_features
-        self.num_layers = num_layers
-        self.initializer = initializer
-        self.activation = activation
-        self.residual_weight = residual_weight
-        self.residual = residual
         self.use_embedding = use_embedding
-        self.embedding_type = embedding_type
-        self.embedding_kwargs = embedding_kwargs if embedding_kwargs is not None else {}
+        embedding_kwargs = embedding_kwargs if embedding_kwargs is not None else {}
 
         # Initialize the embedding layer
-        if self.use_embedding:
-            self.embedding = get_embedding(self.embedding_type, **self.embedding_kwargs)
+        if use_embedding:
+            self.embedding = get_embedding(embedding_type, **embedding_kwargs)
             in_dim = self.embedding.out_features
         else:
-            in_dim = self.in_features
+            in_dim = in_features
 
         layers = []
 
         # first layer with SIREN Initalization
         layers.append(BaseLayer(in_features=in_dim,
                                 out_features=hidden_features,
-                                initializer=self.initializer,
-                                activation=self.activation,
+                                initializer=initializer,
+                                activation=activation,
                                 activation_kwargs={'omega': omega},
                                 initializer_kwargs={'in_features': in_dim,
                                                     'is_first': True,
@@ -75,22 +66,22 @@ class SIREN(nn.Module):
 
         # hidden layers
         for _ in range(1, num_layers - 1):
-            if self.residual:
+            if residual:
                 layers.append(ResidualBaseBlock(in_features=hidden_features,
                                                 out_features=hidden_features,
-                                                initializer=self.initializer,
-                                                activation=self.activation,
+                                                initializer=initializer,
+                                                activation=activation,
                                                 activation_kwargs={'omega': omega},
                                                 initializer_kwargs={'in_features': hidden_features,
                                                                     'is_first': False,
                                                                     'omega': omega},
-                                                residual_weight=self.residual_weight,
+                                                residual_weight=residual_weight,
                                                 ))
             else:
                 layers.append(BaseLayer(in_features=hidden_features,
                                         out_features=hidden_features,
-                                        initializer=self.initializer,
-                                        activation=self.activation,
+                                        initializer=initializer,
+                                        activation=activation,
                                         activation_kwargs={'omega': omega},
                                         initializer_kwargs={'in_features': hidden_features,
                                                             'is_first': False,
@@ -100,8 +91,8 @@ class SIREN(nn.Module):
         # last layer
         layers.append(BaseLayer(in_features=hidden_features,
                                 out_features=out_features,
-                                initializer=self.initializer,
-                                activation=self.activation,
+                                initializer=initializer,
+                                activation=activation,
                                 is_last=True,
                                 initializer_kwargs={'in_features': hidden_features,
                                                     'is_first': False,

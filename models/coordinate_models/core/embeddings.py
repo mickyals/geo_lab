@@ -83,20 +83,6 @@ class GaussianFourierEmbedding(nn.Module):
         """
         super().__init__()
 
-        # Store the input parameters
-        self.input_dim = input_dim
-        """
-        The input dimension.
-        """
-        self.mapping_dim = mapping_dim
-        """
-        The mapping dimension.
-        """
-        self.scale = scale
-        """
-        The scale parameter.
-        """
-
         # Initialize the beta parameter
         self.beta = torch.randn(input_dim, mapping_dim // 2) * scale
         """
@@ -151,20 +137,6 @@ class PositionalEmbedding(nn.Module):
         Following the paper https://arxiv.org/abs/2006.10739
         """
         super().__init__()
-
-        # Store the input parameters
-        self.input_dim = input_dim
-        """
-        The input dimension.
-        """
-        self.mapping_dim = mapping_dim
-        """
-        The mapping dimension.
-        """
-        self.scale = scale
-        """
-        The scale parameter.
-        """
 
         # Create a tensor of size mapping_dim, initialized with values from 0 to mapping_dim-1
         j = torch.arange(mapping_dim, dtype=torch.float32)
@@ -241,16 +213,11 @@ class SphericalGridEmbedding(nn.Module):
         """
         super().__init__()
 
-        # Store the input parameters
-        self.scale = scale  # The scale parameter
-        self.r_min = r_min  # The minimum radius
-        self.r_max = r_max  # The maximum radius (default: 1.0)
-
         # Calculate the scaling factor for the grid
-        self.g = r_max / r_min  # Growth factor for the beta parameter
+        g = r_max / r_min  # Growth factor for the beta parameter
 
         # Create a tensor of size scale, initialized with values from 0 to scale-1
-        self.s = torch.arange(scale, dtype=torch.float32)  # Tensor of shape (scale,) representing the scale values
+        s = torch.arange(scale, dtype=torch.float32)  # Tensor of shape (scale,) representing the scale values
 
         """
         Tensor of shape (scale,) representing the scale values.
@@ -258,8 +225,8 @@ class SphericalGridEmbedding(nn.Module):
         """
 
         # Calculate the beta parameter for each coordinate (latitude and longitude)
-        scale_minus_one = max(self.scale - 1, 1)  # Avoid division by zero
-        beta_row = r_min * self.g ** (self.s / scale_minus_one)  # Tensor of shape (2, scale) representing the beta parameter
+        scale_minus_one = max(scale - 1, 1)  # Avoid division by zero
+        beta_row = r_min * g ** (s / scale_minus_one)  # Tensor of shape (2, scale) representing the beta parameter
 
         """
         Tensor of shape (2, scale) representing the beta parameter.
@@ -276,7 +243,7 @@ class SphericalGridEmbedding(nn.Module):
 
         """
 
-        self.out_features = 4 * self.scale  # The output feature dimension
+        self.out_features = 4 * scale  # The output feature dimension
 
 
     def forward(self, x):
@@ -328,20 +295,15 @@ class SphericalCartesianEmbedding(nn.Module):
         """
         super().__init__()
 
-        # Store the input parameters
-        self.scale = scale  # The number of dimensions in the embeddings
-        self.r_min = r_min  # The minimum radius of the sphere
-        self.r_max = r_max  # The maximum radius of the sphere (default: 1.0)
-
         # Calculate the growth factor for the beta parameter
-        self.g = r_max / r_min  # Growth factor for the beta parameter
+        g = r_max / r_min  # Growth factor for the beta parameter
 
         # Create a tensor of shape (scale,) representing the scale values
-        self.s = torch.arange(scale, dtype=torch.float32)  # Tensor of shape (scale,) representing the scale values
+        s = torch.arange(scale, dtype=torch.float32)  # Tensor of shape (scale,) representing the scale values
 
         # Calculate the beta parameter for each coordinate (latitude and longitude)
-        scale_minus_one = max(self.scale - 1, 1)  # Avoid division by zero
-        beta_row = r_min * self.g ** (self.s / scale_minus_one)  # Tensor of shape (2, scale) representing the beta parameter
+        scale_minus_one = max(scale - 1, 1)  # Avoid division by zero
+        beta_row = r_min * g ** (s / scale_minus_one)  # Tensor of shape (2, scale) representing the beta parameter
 
         # Register the beta parameter as a buffer tensor, with size (2, scale)
         # The first dimension corresponds to latitude, and the second dimension corresponds to longitude
@@ -351,7 +313,7 @@ class SphericalCartesianEmbedding(nn.Module):
         )
 
         # The output feature dimension is 3 * scale
-        self.out_features = 3 * self.scale
+        self.out_features = 3 * scale
 
     def forward(self, x):
         """
@@ -398,32 +360,28 @@ class SphericalMultiScaleEmbedding(nn.Module):
         """
         super().__init__()
 
-        # Store the input parameters
-        self.scale = scale  # The number of dimensions in the embeddings
-        self.r_min = r_min  # The minimum radius of the sphere
-        self.r_max = r_max  # The maximum radius of the sphere (default: 1.0)
 
         # Calculate the growth factor for the beta parameter
-        self.g = r_max / r_min  # Growth factor for the beta parameter
+        g = r_max / r_min  # Growth factor for the beta parameter
         """
         The growth factor for the beta parameter. It is calculated as the ratio of the maximum radius to the minimum radius.
         """
 
         # Create a tensor of shape (scale,) representing the scale values
-        self.s = torch.arange(scale, dtype=torch.float32)  # Tensor of shape (scale,) representing the scale values
+        s = torch.arange(scale, dtype=torch.float32)  # Tensor of shape (scale,) representing the scale values
         """
         Tensor of shape (scale,) representing the scale values. The tensor is initialized with values from 0 to scale-1.
         """
 
         # Calculate the beta parameter for each coordinate (latitude and longitude)
-        scale_minus_one = max(self.scale - 1, 1)  # Avoid division by zero
-        beta_row = r_min * self.g ** (self.s / scale_minus_one)  # Tensor of shape (2, scale) representing the beta parameter
+        scale_minus_one = max(scale - 1, 1)  # Avoid division by zero
+        beta_row = r_min * g ** (s / scale_minus_one)  # Tensor of shape (2, scale) representing the beta parameter
         """
         Tensor of shape (2, scale) representing the beta parameter.
         The first dimension corresponds to latitude, and the second dimension corresponds to longitude.
         """
 
-        self.out_features = 5 * self.scale  # The output feature dimension is 5 * scale
+        self.out_features = 5 * scale  # The output feature dimension is 5 * scale
 
         # Register the beta parameter as a buffer tensor
         self.register_buffer(
@@ -499,29 +457,25 @@ class DoubleFourierSphericalEmbedding(nn.Module):
         """
         super().__init__()
 
-        # Store the input parameters
-        self.scale = scale  # number of dimensions in embeddings
-        self.r_lat_min = r_lat_min  # minimum radius of latitude sphere
-        self.r_lon_min = r_lon_min  # minimum radius of longitude sphere
 
         # Create a tensor of shape (scale,) representing the scale values
-        self.s = torch.arange(scale, dtype=torch.float32)  # scale values tensor
+        s = torch.arange(scale, dtype=torch.float32)  # scale values tensor
 
         # Calculate the growth factors for the latitude and longitude scaling factors
-        self.lat_g = r_max / r_lat_min  # growth factor for latitude scaling
-        self.lon_g = r_max / r_lon_min  # growth factor for longitude scaling
+        lat_g = r_max / r_lat_min  # growth factor for latitude scaling
+        lon_g = r_max / r_lon_min  # growth factor for longitude scaling
 
         # Calculate the scaling factors for latitude and longitude
-        scale_minus_one = max(self.scale - 1, 1)  # avoids division by zero
-        beta_lat = r_lat_min * (self.lat_g ** (self.s / scale_minus_one))  # latitude scaling factors
-        beta_lon = r_lon_min * (self.lon_g ** (self.s / scale_minus_one))  # longitude scaling factors
+        scale_minus_one = max(scale - 1, 1)  # avoids division by zero
+        beta_lat = r_lat_min * (lat_g ** (s / scale_minus_one))  # latitude scaling factors
+        beta_lon = r_lon_min * (lon_g ** (s / scale_minus_one))  # longitude scaling factors
 
         # Register the scaling factors as buffer tensors, with size (scale,)
         self.register_buffer('beta_lat', beta_lat)  # latitude scaling factors
         self.register_buffer('beta_lon', beta_lon)  # longitude scaling factors
 
         # Calculate the output features
-        self.out_features = 4 * (self.scale) ** 2 + (4 * self.scale)
+        self.out_features = (4 * scale** 2) + (4 * scale)
 
     def forward(self, x):
         """
@@ -579,20 +533,16 @@ class SphericalCartesianPlusEmbedding(nn.Module):
         """
         super().__init__()
 
-        # Store the input parameters
-        self.scale = scale  # The number of dimensions in the embeddings
-        self.r_min = r_min  # The minimum radius of the sphere
-        self.r_max = r_max  # The maximum radius of the sphere (default: 1.0)
 
         # Calculate the growth factor for the beta parameter
-        self.g = r_max / r_min  # Growth factor for the beta parameter
+        g = r_max / r_min  # Growth factor for the beta parameter
 
         # Create a tensor of shape (scale,) representing the scale values
-        self.s = torch.arange(scale, dtype=torch.float32)  # Tensor of shape (scale,) representing the scale values
+        s = torch.arange(scale, dtype=torch.float32)  # Tensor of shape (scale,) representing the scale values
 
         # Calculate the beta parameter for each coordinate (latitude and longitude)
-        scale_minus_one = max(self.scale - 1, 1)  # Avoid division by zero
-        beta_row = r_min * self.g ** (self.s / scale_minus_one)  # Tensor of shape (2, scale) representing the beta parameter
+        scale_minus_one = max(scale - 1, 1)  # Avoid division by zero
+        beta_row = r_min * g ** (s / scale_minus_one)  # Tensor of shape (2, scale) representing the beta parameter
 
         # Register the beta parameter as a buffer tensor, with size (2, scale)
         # The first dimension corresponds to latitude, and the second dimension corresponds to longitude
@@ -671,24 +621,20 @@ class SphericalMultiScalePlusEmbedding(nn.Module):
         """
         super().__init__()
 
-        # Store the input parameters
-        self.scale = scale  # The number of dimensions in the embeddings
-        self.r_min = r_min  # The minimum radius of the sphere
-        self.r_max = r_max  # The maximum radius of the sphere (default: 1.0)
 
         # Calculate the growth factor for the beta parameter
-        self.g = r_max / r_min  # Growth factor for the beta parameter
+        g = r_max / r_min  # Growth factor for the beta parameter
 
         # Create a tensor of shape (scale,) representing the scale values
-        self.s = torch.arange(scale, dtype=torch.float32)
+        s = torch.arange(scale, dtype=torch.float32)
         """
         Tensor of shape (scale,) representing the scale values.
         The tensor is initialized with values from 0 to scale-1.
         """
 
         # Calculate the beta parameter for each coordinate (latitude and longitude)
-        scale_minus_one = max(self.scale - 1, 1)  # Avoid division by zero
-        beta_row = r_min * self.g ** (self.s / scale_minus_one)
+        scale_minus_one = max(scale - 1, 1)  # Avoid division by zero
+        beta_row = r_min * g ** (s / scale_minus_one)
         """
         Tensor of shape (2, scale) representing the beta parameter.
         The first dimension corresponds to latitude, and the second dimension corresponds to longitude.
@@ -705,7 +651,7 @@ class SphericalMultiScalePlusEmbedding(nn.Module):
         The first dimension corresponds to latitude, and the second dimension corresponds to longitude.
         """
 
-        self.out_features = 8 * self.scale
+        self.out_features = 8 * scale
         """
         The number of output features of the embedding.
         The output features are determined by the scale parameter.

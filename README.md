@@ -18,29 +18,24 @@ geo_lab/
 │
 ├── data/
 │   ├── processors/                 # Preprocessing & transforms
-│   │   ├── era5.py                  # Load, normalize, coord prep, scaling
-│   │   ├── normalization.py         # Scaling functions
-│   │   └── sampling.py              # Custom coordinate sampling strategies
+│   │   ├── 
 │   │
 │   ├── datamodules/                 # PyTorch Lightning DataModules
 │   │   ├── geo_datamodule.py        # Base geoscience datamodule
-│   │   ├── structured.py            # Gridded (ERA5, DEM)
-│   │   └── unstructured.py          # Point clouds
+│   │   
 │   │
 │   └── dataset_factory.py           # Config-based dataset instantiation
 │
 ├── models/
-│   ├── implicit/
+│   ├── coordinate_models/
 │   │   ├── core/                    # Model building blocks
 │   │   │   ├── activations.py       # Sine, ReLU, Gaussian, etc.
-│   │   │   ├── layers.py            # Fourier layers, modulated layers
+│   │   │   ├── layers.py            # BaseLayer(nn.Module), ResidualBaseLayer(nn.Module)
 │   │   │   ├── initializations.py   # SIREN init, xavier, kaiming, etc.
 │   │   │   └── embeddings.py        # Positional/Fourier embedding
 │   │   │
 │   │   ├── architectures/           # Complete models
 │   │   │   ├── siren.py
-│   │   │   ├── fourier_net.py
-│   │   │   ├── hybrid.py
 │   │   │   └── neural_dmd.py        # Multi-network architectures
 │   │   │
 │   │   └── builders.py              # Model assembly from configs
