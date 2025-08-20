@@ -1,7 +1,12 @@
 import xarray as xr
-import rioxarray
+import rioxarray # needed for tiff files but not explicitly called
 import numpy as np
 import dask as da
+import dask.array as darray
+import math
+
+PI = math.pi
+
 
 def wrap_longitude(
     ds: xr.Dataset, lon_name: str = "longitude", lat_name: str = "latitude"
@@ -24,7 +29,6 @@ def wrap_longitude(
     xr.Dataset
         The dataset with wrapped and sorted longitude coordinates.
     """
-
     # Rename coordinates to standard names if they have different names
     rename_dict = {}
     if lon_name in ds and lon_name != "longitude":
@@ -44,12 +48,19 @@ def wrap_longitude(
         longitude=(((ds["longitude"] + 180) % 360) - 180)
     ).sortby("longitude")
 
+    # The sorting is necessary because the longitude wrapping may move some values to the end of the array
+    # The sort will put them back in the correct order
     return ds
 
 
-def extract_lat_lon_coordinates(ds: xr.Dataset, field_of_view: float = np.pi):
+
+def extract_lat_lon_coordinates(ds: xr.Dataset, field_of_view: float = PI):
     """
     Extracts and normalizes the latitude and longitude coordinates from a dataset.
+
+    The coordinates are normalized to the range [0, 1] and are then converted to a
+    2D grid with the shape (nlat, nlon, 2) where nlat and nlon are the number of
+    latitude and longitude points respectively.
 
     Parameters
     ----------
@@ -60,43 +71,51 @@ def extract_lat_lon_coordinates(ds: xr.Dataset, field_of_view: float = np.pi):
 
     Returns
     -------
-    np.ndarray
-        The normalized coordinates, shape (nlat*nlon, 2).
+    dask.array.Array
+        The normalized coordinates, with shape (nlat * nlon, 2) where nlat and nlon are the number of
+        latitude and longitude points respectively.
     """
 
-     #mask is true where there is a fill value
+    # --- Unnormalized in degrees ---
+    lons_deg = ds["longitude"].data  # dask or numpy
+    lats_deg = ds["latitude"].data
+
+    lon_grid_deg, lat_grid_deg = darray.meshgrid(lons_deg, lats_deg, indexing="xy")
+    lat_lon_coords = darray.stack([lat_grid_deg.ravel(), lon_grid_deg.ravel()], axis=-1)
 
     # convert lat lon to radians
-    lons = np.deg2rad(ds["longitude"].values)
-    lats = np.deg2rad(ds["latitude"].values)
+    lons = darray.radians(ds["longitude"].data)
+    lats = darray.radians(ds["latitude"].data)
 
-    # get dimensions of lats and lons
-    nlat, nlon = lats.size, lons.size
+    lon_min, lon_max = lons.min(), lons.max()
+    lat_min, lat_max = lats.min(), lats.max()
+    lon_norm = (lons - lon_min) / (lon_max - lon_min)
+    lat_norm = (lats - lat_min) / (lat_max - lat_min)
 
     # build flattened lat lon grid
-    lon_grid, lat_grid = np.meshgrid(lons, lats, indexing="xy")
-    lon_flat = lon_grid.ravel()
-    lat_flat = lat_grid.ravel()
-
-    # normalise lat and lon
-    lon_min, lon_max = lon_flat.min(), lon_flat.max()
-    lat_min, lat_max = lat_flat.min(), lat_flat.max()
-    lon_norm = (lon_flat - lon_min) / (lon_max - lon_min)
-    lat_norm = (lat_flat - lat_min) / (lat_max - lat_min)
+    lon_grid, lat_grid = darray.meshgrid(lon_norm, lat_norm, indexing="xy")
 
     # lon should be -fov to fov - assuming global domain
-    lon_c = (lon_norm - 0.5) * (2 * field_of_view)
+    lon_c = (lon_grid - 0.5) * (2 * field_of_view)
 
     # lat should be -fov/2 to fov/2 - assuming global domain change this to -fov to fov if not global domain
-    lat_c = (lat_norm - 0.5) * field_of_view
+    lat_c = (lat_grid - 0.5) * field_of_view
 
-    lat_lon_coords = np.stack((lat_c, lon_c), axis=-1)  # shape (nlat*nlon, 2)
+    lat_lon_coords_norm = darray.stack((lat_c.ravel(), lon_c.ravel()), axis=-1)  # shape (nlat*nlon, 2)
 
-    return lat_lon_coords
 
-def extract_time_coordinates(ds: xr.Dataset, time_name: str = "time") -> np.ndarray:
+    return lat_lon_coords, lat_lon_coords_norm # this is a dask array to access variables you need compute()
+
+
+def extract_time_coordinates(
+    ds: xr.Dataset,  # The dataset to extract time coordinates from.
+    time_name: str = "time"  # The name of the time coordinate, defaults to "time".
+):
     """
     Extracts time coordinates from a dataset and normalizes them to [0, 1].
+
+    The time coordinates are first converted to nanoseconds since the epoch
+    and then normalized to the range [0, 1].
 
     Parameters
     ----------
@@ -107,21 +126,35 @@ def extract_time_coordinates(ds: xr.Dataset, time_name: str = "time") -> np.ndar
 
     Returns
     -------
-    np.ndarray
-        The normalized time coordinates, shape (T,).
+    da.Array
+        The normalized time coordinates as a Dask array, shape (T,).
     """
+    # convert times to nanoseconds since the epoch
+    times = darray.from_array(ds[time_name].data)  # shape (T,)
+    if len(times.shape) == 1:
+        time_coords = 0
+        return time_coords
+    times = times.astype('datetime64[ns]')  # ensure times are nanoseconds
 
-    times = ds[time_name].values.astype('datetime64[ns]')  # shape (T,)
-    t0, t1 = times.min(), times.max()
-    dt = (times - t0).astype('timedelta64[s]').astype('float64')  # shape (T,)
-    total_time = (t1 - t0).astype('timedelta64[s]').astype('float64')
+    # normalize the times to the range [0, 1]
+    t0 = times.min() # get min time
+    t1 = times.max() # get max time
+    total_time = (t1 - t0).astype('float64')  # total time
+    dt = (times - t0).astype('float64')  # shape (T,)
     time_coords = dt / total_time  # shape (T,)
+    time_coords = da.from_array(time_coords)
 
     return time_coords
 
-def extract_other_coordinates(ds: xr.Dataset, coordinate_names: list) -> np.ndarray:
+
+def extract_other_coordinates(ds: xr.Dataset, coordinate_names: list):
     """
     Extracts non-spatial coordinates from a dataset and normalizes them.
+
+    This function takes a dataset and a list of coordinate names and returns a
+    Dask array of normalized coordinates. The coordinates are normalized to the
+    range [0, 1]. The output array has shape (npoints, ncoords) where npoints is
+    the number of data points and ncoords is the number of coordinate dimensions.
 
     Parameters
     ----------
@@ -132,23 +165,35 @@ def extract_other_coordinates(ds: xr.Dataset, coordinate_names: list) -> np.ndar
 
     Returns
     -------
-    np.ndarray
-        The normalized coordinates, shape (ncoord, nvalues, nlevels).
+    da.Array
+        The normalized coordinates.
     """
+    # empty list to store the normalized coordinates
     coord_list = []
+
+    # loop through the coordinate names
     for coordinate_name in coordinate_names:
-        coordinates = ds[coordinate_name].values
-        # normalize
+        # get the coordinates from the dataset
+        coordinates = darray.from_array(ds[coordinate_name].data).astype('float64')
+
+        # normalize the coordinates by subtracting the minimum and
+        # then dividing by the range
         coord_min, coord_max = coordinates.min(), coordinates.max()
         coord_norm = (coordinates - coord_min) / (coord_max - coord_min)
+
+        # append the normalized coordinates to the list
         coord_list.append(coord_norm)
 
-    return np.stack(coord_list, axis=-1)
+    # stack the normalized coordinates along the last axis
+    return darray.stack(coord_list, axis=-1)
 
 
-def extract_variables(ds:xr.Dataset, variable_names: list):
+def extract_variables(
+    ds: xr.Dataset,  # The dataset to extract variables from.
+    variable_names: list,  # The names of the variables to extract.
+):  # The extracted and normalized variables, stacked along the last axis.
     """
-    Extract variables from a dataset and normalize them.
+    Extract variables from a dataset and normalize them to the range [0, 1].
 
     Parameters
     ----------
@@ -159,23 +204,61 @@ def extract_variables(ds:xr.Dataset, variable_names: list):
 
     Returns
     -------
-    np.ndarray
+    da.Array
         The extracted and normalized variables, stacked along the last axis.
     """
+    # Initialize a list to store the extracted variables
     var_list = []
-    for variable_name in variable_names:
-        var = ds[variable_name].values
-        var_min, var_max = var.min(), var.max()
-        var_norm = (var - var_min) / (var_max - var_min)
-        var_list.append(var_norm)
 
-    return np.stack(var_list, axis=-1)
+    # Iterate over the variable names
+    for variable_name in variable_names:
+        # Get the variable from the dataset
+        var = ds[variable_name].data
+
+        # Get the min and max values of the variable
+        var_min, var_max = var.min(), var.max()
+
+        # Normalize the variable to the range [0, 1]
+        var_norm = (var - var_min) / (var_max - var_min)
+
+        # Append the normalized variable to the list
+        var_list.append(var_norm.ravel())
+
+    # Stack the variables along the last axis
+    return darray.stack(var_list, axis=-1)
+
+def keep_coords(
+    ds: xr.Dataset,
+    coordinate_names: list,
+) -> xr.Dataset:
+    """
+    Drops all coordinates from a dataset except for the ones specified in the
+    coordinate_names list.
+
+    Parameters
+    ----------
+    ds : xr.Dataset
+        The input dataset.
+    coordinate_names : list
+        The names of the coordinates to keep.
+
+    Returns
+    -------
+    xr.Dataset
+        The dataset with all coordinates except for the ones in coordinate_names
+        dropped.
+    """
+    # Get the list of coordinates to drop
+    coords_to_drop = [coord for coord in ds.coords if coord not in coordinate_names]
+
+    # Drop the coordinates
+    return ds.drop_vars(coords_to_drop, errors='ignore')
 
 def spatial_mask(
     ds: xr.Dataset,
     variable_name: str = None,
     mask_value: float = None,
-) -> np.ndarray:
+):
     """
     Creates a mask of a dataset or variable to identify fill values.
 
@@ -186,85 +269,144 @@ def spatial_mask(
     variable_name : str, optional
         The name of the variable to create a mask for, by default None
     mask_value : float, optional
-        The value to use as the fill value, by default None.
+        The value to use as the fill value, by default None. If not provided, the
+        _FillValue attribute from the dataset or variable will be used.
 
     Returns
     -------
     np.ndarray
         A boolean mask of the same shape as the dataset or variable, where
         True indicates a fill value.
+    np.ndarray
+        An array of indices of shape (nfillvalues, ndim) where each row is an index
+        into the mask array.
     """
     # If variable_name is provided, get the fill value from the variable attributes
     if variable_name is not None:
-        # Check if the variable exists in the dataset
+        # Check that the variable exists in the dataset
         if variable_name not in ds:
             raise ValueError(f"Variable {variable_name} not found in dataset.")
-        # Get the fill value from the variable attributes if not provided
+        # Get the fill value from the variable attributes
         fill_value = ds[variable_name].attrs.get("_FillValue", None)
-        # Use the provided mask value if not None, otherwise use the fill value
-        mask_value = fill_value if mask_value is None else mask_value
-        # Raise an error if the mask value is still None
-        if mask_value is None:
+        # If mask_value is provided, use it instead
+        if mask_value is not None:
+            fill_value = mask_value
+        # If mask_value is still None, raise an error
+        if fill_value is None:
             raise ValueError(
                 "mask_value must be provided if variable_name is provided or no _FillValue attribute found."
             )
-        # Create the mask using the mask value
-        mask = ds[variable_name].values == mask_value
-    # If variable_name is not provided, get the fill value from the dataset attributes
+
+        data = ds[variable_name]
     else:
-        # Get the fill value from the dataset attributes if not provided
+        # Get the fill value from the dataset attributes
         fill_value = ds.attrs.get("_FillValue", None)
-        # Use the provided mask value if not None, otherwise use the fill value
-        mask_value = fill_value if mask_value is None else mask_value
-        # Raise an error if the mask value is still None
-        if mask_value is None:
+        # If mask_value is provided, use it instead
+        if mask_value is not None:
+            fill_value = mask_value
+        # If mask_value is still None, raise an error
+        if fill_value is None:
             raise ValueError(
                 "mask_value must be provided if variable_name is provided or no _FillValue attribute found."
             )
-        # Create the mask using the mask value
-        mask = ds.values == mask_value
+        # Convert the dataset data to a dask array
+        data = ds.data
 
-    # Return the mask as a numpy array
-    return np.argwhere(mask)
+    # Create a mask of the dataset or variable where fill values are True
+    mask = data == fill_value
+    # Get the indices of the fill values in the mask
+    indices = darray.argwhere(mask.data.ravel())
 
+    # Return the mask and indices
+    return mask, indices
 
-def sampler(seed: int, total_samples: int, num_sensors: int) -> np.ndarray:
+######
+## these should probably me moved to under data module for dataset logic not processing logic.
+####
+
+def sampler(seed: int) -> np.random.Generator:
     """
-    Creates an array of random sample indices from a given range of total samples.
+    Create a numpy random Generator object with the given seed.
 
     Parameters
     ----------
     seed : int
-        The seed for the random number generator.
+        The seed value to use to genera te the random numbers.
+
+    Returns
+    -------
+    np.random.Generator
+        A numpy random Generator object with the given seed.
+    """
+    return np.random.default_rng(seed)
+
+
+
+def shuffler(sampler, total_samples, num_sensors):
+    """
+    Create a random sampler that shuffles the data to sample from.
+
+    Parameters
+    ----------
+    sampler : np.random.Generator
+        A numpy random Generator object to use to generate the random numbers.
     total_samples : int
-        The total number of samples to draw from.
-    num_ssensors : int
-        The number of samples to draw.
+        The total number of samples to sample from.
+    num_sensors : int
+        The number of sensors to sample from.
 
     Returns
     -------
     np.ndarray
-        An array of num_samples random sample indices from the range [0, total_samples).
+        An array of indices of shape (num_sensors,) where each index is into the
+        total_samples array.
     """
     # Create a random number generator with the given seed
-    rng = np.random.default_rng(seed)
-
-    # Use the random number generator to draw num_samples random samples from
-    # the range [0, total_samples)
-    # if total_samples equals num_samples, this will return a shuffled list of indices
+    rng = sampler
+    # Return a shuffled array of indices of shape (num_sensors,)
+    # where each index is into the total_samples array
     return rng.choice(total_samples, size=num_sensors, replace=False)
 
 
-def shuffler(coords, variables, seed, total_samples, num_sensors):
-    # Create a random number generator with the given seed
+
+def make_batches(
+    idxs: np.ndarray,
+    batch_size: int,
+    num_epochs: int,
+    shuffle_each_epoch: bool = True,
+    seed: int = None,
+):
+    """
+    Create an iterator that yields batches of indices.
+
+    Parameters
+    ----------
+    idxs : np.ndarray
+        The array of indices to sample from.
+    batch_size : int
+        The number of indices to include in each batch.
+    num_epochs : int
+        The number of epochs to iterate over the indices.
+    shuffle_each_epoch : bool, optional
+        If True, the indices will be shuffled at the beginning of each epoch.
+        By default, True.
+    seed : int, optional
+        The seed value to use to generate the random numbers. If not provided, the
+        current time will be used.
+
+    Yields
+    ------
+    np.ndarray
+        An array of indices of shape (batch_size,) where each index is into the
+        idxs array.
+    """
     rng = np.random.default_rng(seed)
 
-    # Use the random number generator to draw num_samples random samples from
-    # the range [0, total_samples)
-    # if total_samples equals num_samples, this will return a shuffled list of indices
-    rng.choice(total_samples, size=num_sensors, replace=False)
-
-    pass
+    for _ in range(num_epochs):
+        if shuffle_each_epoch:
+            rng.shuffle(idxs)
+        for i in range(0, len(idxs), batch_size):
+            yield idxs[i:i + batch_size]
 
 
 

@@ -22,6 +22,8 @@ geo_lab/
 │   │
 │   ├── datamodules/                 # PyTorch Lightning DataModules
 │   │   ├── geo_datamodule.py        # Base geoscience datamodule
+│   │
+│   ├── datasets
 │   │   
 │   │
 │   └── dataset_factory.py           # Config-based dataset instantiation

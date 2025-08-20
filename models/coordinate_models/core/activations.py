@@ -537,6 +537,7 @@ class sinc_activation(nn.Module):
 # Other activations
 #===================================================================
 
+
 @register_activation("RELU", description="ReLU activation")
 class relu(nn.Module):
     def __init__(self, ):
