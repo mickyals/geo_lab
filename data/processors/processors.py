@@ -1,6 +1,7 @@
 import xarray as xr
 import rioxarray
 import numpy as np
+import dask as da
 
 def wrap_longitude(
     ds: xr.Dataset, lon_name: str = "longitude", lat_name: str = "latitude"
@@ -252,6 +253,18 @@ def sampler(seed: int, total_samples: int, num_sensors: int) -> np.ndarray:
     # the range [0, total_samples)
     # if total_samples equals num_samples, this will return a shuffled list of indices
     return rng.choice(total_samples, size=num_sensors, replace=False)
+
+
+def shuffler(coords, variables, seed, total_samples, num_sensors):
+    # Create a random number generator with the given seed
+    rng = np.random.default_rng(seed)
+
+    # Use the random number generator to draw num_samples random samples from
+    # the range [0, total_samples)
+    # if total_samples equals num_samples, this will return a shuffled list of indices
+    rng.choice(total_samples, size=num_sensors, replace=False)
+
+    pass
 
 
 
