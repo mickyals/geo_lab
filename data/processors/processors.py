@@ -132,7 +132,7 @@ def extract_time_coordinates(
     # convert times to nanoseconds since the epoch
     times = darray.from_array(ds[time_name].data)  # shape (T,)
     if len(times.shape) == 1:
-        time_coords = 0
+        time_coords = darray.from_array(np.array([0.]))
         return time_coords
     times = times.astype('datetime64[ns]')  # ensure times are nanoseconds
 
@@ -170,11 +170,13 @@ def extract_other_coordinates(ds: xr.Dataset, coordinate_names: list):
     """
     # empty list to store the normalized coordinates
     coord_list = []
+    norm_coords = []
 
     # loop through the coordinate names
     for coordinate_name in coordinate_names:
         # get the coordinates from the dataset
-        coordinates = darray.from_array(ds[coordinate_name].data).astype('float64')
+        coordinates = darray.from_array(ds[coordinate_name].data).astype('float32')
+        coord_list.append(coordinates.ravel())
 
         # normalize the coordinates by subtracting the minimum and
         # then dividing by the range
@@ -182,10 +184,13 @@ def extract_other_coordinates(ds: xr.Dataset, coordinate_names: list):
         coord_norm = (coordinates - coord_min) / (coord_max - coord_min)
 
         # append the normalized coordinates to the list
-        coord_list.append(coord_norm)
+        norm_coords.append(coord_norm)
 
     # stack the normalized coordinates along the last axis
-    return darray.stack(coord_list, axis=-1)
+    other_coords = darray.stack(coord_list, axis=-1)
+    norm_other_coords = darray.stack(norm_coords, axis=-1)
+
+    return other_coords, norm_other_coords
 
 
 def extract_variables(
@@ -208,12 +213,14 @@ def extract_variables(
         The extracted and normalized variables, stacked along the last axis.
     """
     # Initialize a list to store the extracted variables
+    norm_var_list = []
     var_list = []
 
     # Iterate over the variable names
     for variable_name in variable_names:
         # Get the variable from the dataset
         var = ds[variable_name].data
+        var_list.append(var.astype('float32').ravel())
 
         # Get the min and max values of the variable
         var_min, var_max = var.min(), var.max()
@@ -222,10 +229,13 @@ def extract_variables(
         var_norm = (var - var_min) / (var_max - var_min)
 
         # Append the normalized variable to the list
-        var_list.append(var_norm.ravel())
+        norm_var_list.append(var_norm.astype('float32').ravel())
 
     # Stack the variables along the last axis
-    return darray.stack(var_list, axis=-1)
+    vars = darray.stack(var_list, axis=-1)
+    norm_vars = darray.stack(norm_var_list, axis=-1)
+
+    return vars, norm_vars
 
 def keep_coords(
     ds: xr.Dataset,
@@ -319,98 +329,5 @@ def spatial_mask(
 
     # Return the mask and indices
     return mask, indices
-
-######
-## these should probably me moved to under data module for dataset logic not processing logic.
-####
-
-def sampler(seed: int) -> np.random.Generator:
-    """
-    Create a numpy random Generator object with the given seed.
-
-    Parameters
-    ----------
-    seed : int
-        The seed value to use to genera te the random numbers.
-
-    Returns
-    -------
-    np.random.Generator
-        A numpy random Generator object with the given seed.
-    """
-    return np.random.default_rng(seed)
-
-
-
-def shuffler(sampler, total_samples, num_sensors):
-    """
-    Create a random sampler that shuffles the data to sample from.
-
-    Parameters
-    ----------
-    sampler : np.random.Generator
-        A numpy random Generator object to use to generate the random numbers.
-    total_samples : int
-        The total number of samples to sample from.
-    num_sensors : int
-        The number of sensors to sample from.
-
-    Returns
-    -------
-    np.ndarray
-        An array of indices of shape (num_sensors,) where each index is into the
-        total_samples array.
-    """
-    # Create a random number generator with the given seed
-    rng = sampler
-    # Return a shuffled array of indices of shape (num_sensors,)
-    # where each index is into the total_samples array
-    return rng.choice(total_samples, size=num_sensors, replace=False)
-
-
-
-def make_batches(
-    idxs: np.ndarray,
-    batch_size: int,
-    num_epochs: int,
-    shuffle_each_epoch: bool = True,
-    seed: int = None,
-):
-    """
-    Create an iterator that yields batches of indices.
-
-    Parameters
-    ----------
-    idxs : np.ndarray
-        The array of indices to sample from.
-    batch_size : int
-        The number of indices to include in each batch.
-    num_epochs : int
-        The number of epochs to iterate over the indices.
-    shuffle_each_epoch : bool, optional
-        If True, the indices will be shuffled at the beginning of each epoch.
-        By default, True.
-    seed : int, optional
-        The seed value to use to generate the random numbers. If not provided, the
-        current time will be used.
-
-    Yields
-    ------
-    np.ndarray
-        An array of indices of shape (batch_size,) where each index is into the
-        idxs array.
-    """
-    rng = np.random.default_rng(seed)
-
-    for _ in range(num_epochs):
-        if shuffle_each_epoch:
-            rng.shuffle(idxs)
-        for i in range(0, len(idxs), batch_size):
-            yield idxs[i:i + batch_size]
-
-
-
-
-
 
 
