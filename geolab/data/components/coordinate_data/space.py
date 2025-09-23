@@ -5,9 +5,9 @@ import numpy as np
 class GeoSpatialDomain:
     def __init__(
             self,
-            spatial_bounds: List[Tuple[float, float]],
+            spatial_domain: List[np.ndarray],
             shape: List[int],
-            temporal_bounds: Optional[Tuple[float, float]] = None,
+            temporal_domain: Optional[List[np.ndarray]] = None,
             indexing: str = 'ij',
             sparse: bool = False,
             dtype: type = np.float64
@@ -22,8 +22,8 @@ class GeoSpatialDomain:
             sparse: If True, return sparse meshgrid to save memory
             dtype: Data type of the coordinate arrays
         """
-        self.spatial_bounds = np.asarray(spatial_bounds, dtype=dtype)
-        self.temporal_bounds = np.asarray(temporal_bounds, dtype=dtype) if temporal_bounds else None
+        self.spatial_bounds = spatial_domain
+        self.temporal_bounds = temporal_domain if temporal_domain else None
         self.shape = shape
         self.indexing = indexing
         self.sparse = sparse
@@ -40,27 +40,20 @@ class GeoSpatialDomain:
             For 2D spatial: [X, Y]
         """
         # Generate spatial coordinates
-        axes = [
-            np.linspace(b[0], b[1], n, dtype=self.dtype)
-            for b, n in zip(self.spatial_bounds, self.shape)
-        ]
+        axes = [spatial_coords for spatial_coords in self.spatial_domain
+            ] # axes is a list of numpy array, each array is length n in self.shape
+
 
         # Add time dimension if needed
         if self.temporal_bounds is not None:
-            t_axis = np.linspace(
-                self.temporal_bounds[0],
-                self.temporal_bounds[1],
-                self.shape[-1],
-                dtype=self.dtype
-            )
-            axes.append(t_axis)
+            axes.append(self.time_domain) #
 
         # Generate mesh
-        self._mesh = np.meshgrid(*axes, indexing=self.indexing, sparse=self.sparse)
+        self._mesh = np.meshgrid(*axes, indexing=self.indexing, sparse=self.sparse) # the shape of self._mesh is the same as self.shape
         return self._mesh
 
     @property
-    def mesh(self) -> List[np.ndarray]:
+    def load_mesh(self) -> List[np.ndarray]:
         """Lazy-loading mesh property."""
         if self._mesh is None:
             self.generate_mesh()
