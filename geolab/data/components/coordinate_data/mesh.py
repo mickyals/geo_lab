@@ -1,8 +1,45 @@
 """
 Mesh handling module for geospatial data processing.
 
-This module provides classes for handling spatial and temporal mesh data,
-including boundary conditions and data sampling for physical simulations.
+This module provides a flexible framework for working with spatial and spatio-temporal
+mesh data, with support for various boundary conditions, data sampling strategies,
+and coordinate systems. It is designed to handle both structured and unstructured
+grids, with special support for geospatial data through integration with xarray.
+
+Core Functionality:
+- Mesh representation and manipulation through the MeshBase class
+- Boundary condition handling for all spatial dimensions (north, south, east, west, lower, upper)
+- Support for both spatial and temporal dimensions
+- Data sampling methods including Latin Hypercube Sampling (LHS)
+- Integration with xarray for geospatial data handling
+
+Key Classes:
+    MeshBase: Abstract base class defining the interface for all mesh types
+    XarrayMesh: Implementation for working with xarray datasets
+    GeoSpatialDomain: Handles spatial domain representation (imported from space.py)
+
+Assumptions:
+1. Spatial dimensions follow the convention: (x, y, z) for 3D or (x, y) for 2D
+2. Time is always the last dimension if present
+3. Mesh data is assumed to be structured (gridded) but can be non-uniform
+4. Solution variables are stored as numpy arrays with dimensions matching the mesh
+5. For temporal data, time is assumed to be the last dimension in all arrays
+6. Boundary methods return points in a consistent format: (spatial_coords, time_values, solution_values)
+
+Example Usage:
+    ```python
+    # Initialize a mesh from an xarray dataset
+    mesh = XarrayMesh(
+        root_dir='path/to/data.nc',
+        read_data_fn=xr.open_dataset,
+        spatial_dims=['longitude', 'latitude'],
+        time_dim='time',
+        solution_vars=['temperature', 'pressure']
+    )
+    
+    # Get points at the northern boundary
+    coords, time, solutions = mesh.on_north_boundary(['temperature'])
+    ```
 """
 
 from typing import Callable, List, Optional, Dict, Tuple, Any, Union
@@ -137,68 +174,227 @@ class MeshBase:
         return spatial_domain, time_domain, solution_domain
 
     def on_north_boundary(self, solution_names: list) -> Tuple[np.ndarray, Optional[np.ndarray], Dict[str, np.ndarray]]:
-        """Return points at the northern spatial boundary (max Y)."""
+        """
+        Return points at the northern spatial boundary (max Y).
+
+        This method returns the points at the northern boundary of the spatial domain,
+        along with the corresponding time and solution values.
+
+        Parameters
+        ----------
+        solution_names : List[str]
+            List of variable names to extract from the solution domain.
+
+        Returns
+        -------
+        Tuple containing:
+            np.ndarray: Spatial coordinates of points at the northern boundary, shape (n_points, n_dims).
+            Optional[np.ndarray]: Time values (if mesh has a temporal component), shape (n_points, 1).
+            Dict[str, np.ndarray]: Solution values for each variable at the northern boundary.
+        """
+
+        # Stack the spatial mesh dimensions into a single array
         spatial_mesh = np.stack(self.mesh.load_mesh[:-1], axis=-1)
+
+        # Get spatial coordinates at the northern boundary (max Y)
+        # shape: (n_points, n_spatial_dims)
         spatial_domain = spatial_mesh[:, -1:, :]  # max along Y-axis (north)
         spatial_domain = np.squeeze(spatial_domain, axis=1)
 
+        # Handle temporal data if specified
         time_domain = self.mesh.load_mesh[-1] if self.mesh.temporal_bounds else None
-        solution_domain = {name: self.solution_domain[name][:, -1:] for name in solution_names}
+
+        # Extract solution variables at the northern boundary
+        solution_domain = {
+            name: self.solution_domain[name][:, -1:]  # max along Y-axis (north)
+            for name in solution_names
+            if name in self.solution_domain
+        }
 
         return spatial_domain, time_domain, solution_domain
 
-    def on_south_boundary(self, solution_names: list) -> Tuple[np.ndarray, Optional[np.ndarray], Dict[str, np.ndarray]]:
-        """Return points at the southern spatial boundary (min Y)."""
+    def on_south_boundary(self, solution_names: List[str]) -> Tuple[np.ndarray, Optional[np.ndarray], Dict[str, np.ndarray]]:
+        """
+        Return points at the southern spatial boundary (min Y).
+
+        This method returns the points at the southern boundary of the spatial domain,
+        along with the corresponding time and solution values.
+
+        Parameters
+        ----------
+        solution_names : List[str]
+            List of variable names to extract from the solution domain.
+
+        Returns
+        -------
+        Tuple containing:
+            np.ndarray: Spatial coordinates of points at the southern boundary, shape (n_points, n_dims).
+            Optional[np.ndarray]: Time values (if mesh has a temporal component), shape (n_points, 1).
+            Dict[str, np.ndarray]: Solution values for each variable at the southern boundary.
+
+        Notes
+        -----
+        The southern boundary is defined as the minimum along the Y-axis.
+        """
+        # Get points at the southern boundary (min along Y-axis)
         spatial_mesh = np.stack(self.mesh.load_mesh[:-1], axis=-1)
         spatial_domain = spatial_mesh[:, :1, :]  # min along Y-axis (south)
         spatial_domain = np.squeeze(spatial_domain, axis=1)
 
-        time_domain = self.mesh.load_mesh[-1] if self.mesh.temporal_bounds else None
-        solution_domain = {name: self.solution_domain[name][:, :1] for name in solution_names}
+        # Get time values if mesh has a temporal component
+        time_domain = None
+        if self.mesh.temporal_bounds:
+            time_domain = self.mesh.load_mesh[-1]
+
+        # Extract solution values at the southern boundary
+        solution_domain = {}
+        for name in solution_names:
+            if name in self.solution_domain:
+                solution_domain[name] = self.solution_domain[name][:, :1]  # min along Y-axis (south)
 
         return spatial_domain, time_domain, solution_domain
 
     def on_east_boundary(self, solution_names: list) -> Tuple[np.ndarray, Optional[np.ndarray], Dict[str, np.ndarray]]:
-        """Return points at the eastern spatial boundary (max X)."""
+        """
+        Return points at the eastern spatial boundary (max X).
+
+        This method returns the points at the eastern boundary of the spatial domain,
+        along with the corresponding time and solution values.
+
+        Parameters
+        ----------
+        solution_names : List[str]
+            List of variable names to extract from the solution domain.
+
+        Returns
+        -------
+        Tuple containing:
+            np.ndarray: Spatial coordinates of points at the eastern boundary, shape (n_points, n_dims).
+            Optional[np.ndarray]: Time values (if mesh has a temporal component), shape (n_points, 1).
+            Dict[str, np.ndarray]: Solution values for each variable at the eastern boundary.
+        """
+        # Get spatial coordinates at the eastern boundary (max X)
         spatial_mesh = np.stack(self.mesh.load_mesh[:-1], axis=-1)
         spatial_domain = spatial_mesh[-1:, :, :]  # max along X-axis (east)
         spatial_domain = np.squeeze(spatial_domain, axis=0)
 
+        # Handle temporal data if specified
         time_domain = self.mesh.load_mesh[-1] if self.mesh.temporal_bounds else None
-        solution_domain = {name: self.solution_domain[name][-1:, :] for name in solution_names}
+
+        # Extract solution variables at the eastern boundary
+        solution_domain = {
+            name: self.solution_domain[name][-1:, :]  # max along X-axis (east)
+            for name in solution_names
+            if name in self.solution_domain
+        }
 
         return spatial_domain, time_domain, solution_domain
 
-    def on_west_boundary(self, solution_names: list) -> Tuple[np.ndarray, Optional[np.ndarray], Dict[str, np.ndarray]]:
-        """Return points at the western spatial boundary (min X)."""
+    def on_west_boundary(self, solution_names: List[str]) -> Tuple[np.ndarray, Optional[np.ndarray], Dict[str, np.ndarray]]:
+        """
+        Return points at the western spatial boundary (min X).
+
+        This method returns the points at the western boundary of the spatial domain,
+        along with the corresponding time and solution values.
+
+        Parameters
+        ----------
+        solution_names : List[str]
+            List of variable names to extract from the solution domain.
+
+        Returns
+        -------
+        Tuple containing:
+            np.ndarray: Spatial coordinates of points at the western boundary, shape (n_points, n_dims).
+            Optional[np.ndarray]: Time values (if mesh has a temporal component), shape (n_points, 1).
+            Dict[str, np.ndarray]: Solution values for each variable at the western boundary.
+        """
+        # Get spatial coordinates at the western boundary (min X)
         spatial_mesh = np.stack(self.mesh.load_mesh[:-1], axis=-1)
         spatial_domain = spatial_mesh[:1, :, :]  # min along X-axis (west)
         spatial_domain = np.squeeze(spatial_domain, axis=0)
 
+        # Handle temporal data if specified
         time_domain = self.mesh.load_mesh[-1] if self.mesh.temporal_bounds else None
-        solution_domain = {name: self.solution_domain[name][:1, :] for name in solution_names}
+
+        # Extract solution variables at the western boundary
+        solution_domain = {
+            name: self.solution_domain[name][:1, :]  # min along X-axis (west)
+            for name in solution_names
+            if name in self.solution_domain
+        }
 
         return spatial_domain, time_domain, solution_domain
 
     def on_lower_boundary(self, solution_names: list) -> Tuple[np.ndarray, Optional[np.ndarray], Dict[str, np.ndarray]]:
-        """Return points at the lower boundary in the vertical dimension (min Z)."""
+        """
+        Return points at the lower boundary in the vertical dimension (min Z).
+
+        This method returns the points at the lower boundary of the spatial domain,
+        along with the corresponding time and solution values.
+
+        Parameters
+        ----------
+        solution_names : List[str]
+            List of variable names to extract from the solution domain.
+
+        Returns
+        -------
+        Tuple containing:
+            np.ndarray: Spatial coordinates of points at the lower boundary, shape (n_points, n_dims).
+            Optional[np.ndarray]: Time values (if mesh has a temporal component), shape (n_points, 1).
+            Dict[str, np.ndarray]: Solution values for each variable at the lower boundary.
+        """
+        # Get spatial coordinates at the lower boundary (min Z)
         spatial_mesh = np.stack(self.mesh.load_mesh[:-1], axis=-1)
         spatial_domain = spatial_mesh[:, :, :1]  # min along Z-axis (lower)
         spatial_domain = np.squeeze(spatial_domain, axis=2)
 
+        # Handle temporal data if specified
         time_domain = self.mesh.load_mesh[-1] if self.mesh.temporal_bounds else None
-        solution_domain = {name: self.solution_domain[name][:, :, :1] for name in solution_names}
+
+        # Extract solution variables at the lower boundary
+        solution_domain = {
+            name: self.solution_domain[name][:, :, :1]  # min along Z-axis (lower)
+            for name in solution_names
+            if name in self.solution_domain
+        }
 
         return spatial_domain, time_domain, solution_domain
 
     def on_upper_boundary(self, solution_names: list) -> Tuple[np.ndarray, Optional[np.ndarray], Dict[str, np.ndarray]]:
-        """Return points at the upper boundary in the vertical dimension (max Z)."""
+        """
+        Return points at the upper boundary in the vertical dimension (max Z).
+
+        This method returns the points at the upper boundary of the spatial domain,
+        along with the corresponding time and solution values.
+
+        Parameters
+        ----------
+        solution_names : List[str]
+            List of variable names to extract from the solution domain.
+
+        Returns
+        -------
+        Tuple containing:
+            np.ndarray: Spatial coordinates of points at the upper boundary, shape (n_points, n_dims).
+            Optional[np.ndarray]: Time values (if mesh has a temporal component), shape (n_points, 1).
+            Dict[str, np.ndarray]: Solution values for each variable at the upper boundary.
+        """
+        # Get spatial coordinates at the upper boundary (max Z)
         spatial_mesh = np.stack(self.mesh.load_mesh[:-1], axis=-1)
         spatial_domain = spatial_mesh[:, :, -1:]  # max along Z-axis (upper)
         spatial_domain = np.squeeze(spatial_domain, axis=2)
 
+        # Handle temporal data if specified
         time_domain = self.mesh.load_mesh[-1] if self.mesh.temporal_bounds else None
-        solution_domain = {name: self.solution_domain[name][:, :, -1:] for name in solution_names}
+
+        # Extract solution variables at the upper boundary
+        solution_domain = {
+            name: self.solution_domain[name][:, :, -1:]  # max along Z-axis (upper)
+            for name in solution_names
+            if name in self.solution_domain
+        }
 
         return spatial_domain, time_domain, solution_domain
 
@@ -300,7 +496,7 @@ class MeshBase:
         return spatial_domain, time_domain, solution_domain
 
 
-class Xarray(MeshBase):
+class XarrayMesh(MeshBase):
     """
     Mesh class for handling xarray datasets with spatial and temporal dimensions.
     

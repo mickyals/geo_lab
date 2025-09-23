@@ -1,8 +1,70 @@
+"""
+Spatial domain handling for geospatial data processing.
+
+This module provides the GeoSpatialDomain class for managing spatial and temporal
+domains in geospatial applications. It handles coordinate transformations,
+mesh generation, and provides utilities for working with spatial data in both
+structured and unstructured formats.
+
+Core Functionality:
+- Spatial domain representation and management
+- Coordinate system handling
+- Mesh generation and manipulation
+- Support for both spatial and temporal dimensions
+- Integration with numpy for numerical operations
+
+Key Classes:
+    GeoSpatialDomain: Manages spatial domains and coordinate transformations
+
+Assumptions:
+1. Spatial coordinates are provided as a list of 1D numpy arrays
+2. The order of spatial dimensions follows (x, y, z) for 3D or (x, y) for 2D
+3. Time is treated as a separate, optional dimension
+4. All coordinate arrays must have consistent shapes
+5. For temporal data, time values must be provided as a 1D numpy array
+
+Example Usage:
+    ```python
+    # Create a 2D spatial domain
+    x = np.linspace(0, 10, 100)
+    y = np.linspace(0, 20, 200)
+    spatial_domain = [x, y]
+    
+    # Create a GeoSpatialDomain instance
+    domain = GeoSpatialDomain(
+        spatial_domain=spatial_domain,
+        shape=[100, 200],
+        temporal_domain=None
+    )
+    
+    # Generate the mesh grid
+    mesh = domain.generate_mesh()
+    or
+    mesh = domain.load_mesh # lazy loading
+    ```
+"""
+
 from typing import List, Tuple, Union, Optional, Dict, Any
 import numpy as np
 
 
 class GeoSpatialDomain:
+    """
+    A class to represent and manipulate spatial domains with optional temporal component.
+    
+    This class provides functionality to work with spatial data, including mesh generation,
+    coordinate transformations, and domain management. It supports both spatial and
+    spatio-temporal data through a unified interface.
+    
+    Attributes:
+        spatial_bounds (List[np.ndarray]): List of coordinate arrays for each spatial dimension
+        temporal_bounds (Optional[np.ndarray]): Optional array of time values
+        shape (List[int]): Shape of the spatial domain (excluding time)
+        indexing (str): Indexing convention ('ij' for matrix, 'xy' for Cartesian)
+        sparse (bool): Whether to use sparse representation for large meshes
+        dtype: Data type of the coordinate arrays
+        _mesh (Optional[List[np.ndarray]]): Cached mesh grid
+    """
     def __init__(
             self,
             spatial_domain: List[np.ndarray],
