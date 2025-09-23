@@ -42,13 +42,12 @@ Example Usage:
     ```
 """
 
-from typing import Callable, List, Optional, Dict, Tuple, Any, Union
+from typing import Callable, List, Optional, Dict, Tuple
 
 import numpy as np
 import pyDOE as lhs
-import torch
 
-from geolab.data.components.coordinate_data.space import GeoSpatialDomain
+from geolab.data.components.coordinate_data.domains.space import GeoSpatialDomain
 
 
 class MeshBase:

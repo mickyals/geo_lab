@@ -1,2 +1,2 @@
 from .mesh import MeshBase
-from .space import GeoSpatialDomain
+from geolab.data.components.coordinate_data.domains.space import GeoSpatialDomain
