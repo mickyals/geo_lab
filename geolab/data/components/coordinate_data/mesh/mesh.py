@@ -45,9 +45,11 @@ Example Usage:
 from typing import Callable, List, Optional, Dict, Tuple
 
 import numpy as np
-import pyDOE as lhs
+from typing import Dict, List, Optional, Tuple, Union, Any
+import warnings
+from pyDOE import lhs
 
-from geolab.data.components.coordinate_data.domains.space import GeoSpatialDomain
+from geolab.data.components.coordinate_data.domains import GeoSpatioTemporalDomain
 
 
 class MeshBase:
@@ -82,7 +84,7 @@ class MeshBase:
         and initializes bounds for spatial, temporal, and solution domains.
         """
         # Initialize the spatial domain handler (to be set by child classes)
-        self.mesh: Optional[GeoSpatialDomain] = None
+        self.mesh: Optional[GeoSpatioTemporalDomain] = None
         
         # Dictionary to store solution variables (e.g., temperature, pressure)
         # Key: variable name (str), Value: numpy array containing the data
@@ -401,7 +403,8 @@ class MeshBase:
             self,
             N_f: int,
             use_lhs: bool = True,
-            solution_names: Optional[List[str]] = None
+            solution_names: Optional[List[str]] = None,
+            collocation_solution: bool = False,
     ) -> Tuple[np.ndarray, Optional[np.ndarray], Optional[Dict[str, np.ndarray]]]:
         """
         Generate a collection of points for data collection.
@@ -411,9 +414,13 @@ class MeshBase:
         N_f : int
             Number of points to collect.
         use_lhs : bool
-            Whether to use Latin Hypercube Sampling or all points from mesh.
+
+            Whether to use Latin Hypercube Sampling or points from the mesh.
+            If False, only non-boundary points from the mesh will be used.
         solution_names : list of str, optional
             Names of solution variables to return if use_lhs=False.
+        collocation_solution : bool, default=False
+            Whether to include solution values for collocation points.
 
         Returns
         -------
@@ -424,7 +431,6 @@ class MeshBase:
         solution_domain : dict[str, np.ndarray] or None
             Dictionary of solution values at the points if use_lhs=False; else None
         """
-
         # Get spatial and time dimensions
         spatial_dims = list(self.lower_bounds['spatial'].keys())
         time_dim = list(self.lower_bounds['time'].keys())[0] if self.lower_bounds['time'] else None
@@ -452,21 +458,66 @@ class MeshBase:
 
             solution_domain = None  # collocation points, no solution needed
         else:
-            # Use all points from flattened mesh
-            spatial_domain, time_domain, solution_domain_full = self.flatten_mesh(solution_names)
-            solution_domain = solution_domain_full if solution_names else None
+            # Use non-boundary points from the mesh
+            spatial_domain, time_domain, solution_domain = self.flatten_mesh(
+                solution_names, 
+                exclude_boundaries=True
+            )
+            
+            # If we have more points than requested, randomly sample them
+            if len(spatial_domain) > N_f:
+                indices = np.random.choice(len(spatial_domain), N_f, replace=False)
+                spatial_domain = spatial_domain[indices]
+                if time_domain is not None:
+                    time_domain = time_domain[indices]
+                if solution_domain is not None:
+                    solution_domain = {k: v[indices] for k, v in solution_domain.items()}
+            elif len(spatial_domain) < N_f:
+                warnings.warn(
+                    f"Requested {N_f} points but only {len(spatial_domain)} non-boundary points available. "
+                    f"Returning all {len(spatial_domain)} points."
+                )
 
         return spatial_domain, time_domain, solution_domain
 
-    def flatten_mesh(self, solution_names: Optional[List[str]] = None) -> Tuple[
+    def _get_non_boundary_indices(self, mesh_arrays: List[np.ndarray]) -> np.ndarray:
+        """
+        Get indices of points that are not on the boundary of the mesh.
+        
+        Parameters
+        ----------
+        mesh_arrays : List[np.ndarray]
+            List of mesh coordinate arrays (spatial dimensions + optional time)
+            
+        Returns
+        -------
+        np.ndarray
+            Boolean array where True indicates a non-boundary point
+        """
+        # Create a mask of all True values (all points included by default)
+        shape = mesh_arrays[0].shape
+        mask = np.ones(shape, dtype=bool)
+        
+        # For each dimension, exclude the boundary points
+        for dim in range(len(shape)):
+            # Set boundary points to False in the mask
+            mask[tuple(slice(None) if i != dim else [0, -1] 
+                     for i in range(len(shape)))] = False
+        
+        return mask
+
+    def flatten_mesh(self, solution_names: Optional[List[str]] = None, 
+                    exclude_boundaries: bool = False) -> Tuple[
         np.ndarray, Optional[np.ndarray], Optional[Dict[str, np.ndarray]]]:
         """
-        Flatten the mesh data for training.
+        Flatten the mesh data for training, optionally excluding boundary points.
 
         Parameters
         ----------
         solution_names : List[str], optional
             Names of the solution variables to return. If None, no solution values are returned.
+        exclude_boundaries : bool, default=False
+            If True, exclude points on the boundary of the domain.
 
         Returns
         -------
@@ -478,19 +529,34 @@ class MeshBase:
             Flattened solution values at each point, if solution_names is provided
         """
         mesh_arrays = self.mesh.load_mesh  # List of arrays: spatial dims (+ optional time)
+        
+        if exclude_boundaries:
+            # Get mask for non-boundary points
+            mask = self._get_non_boundary_indices(mesh_arrays)
+            # Apply mask to each array
+            mesh_arrays = [arr[mask] for arr in mesh_arrays]
+            if solution_names is not None:
+                solution_arrays = {name: self.solution_domain[name][mask] 
+                                 for name in solution_names}
+        else:
+            # Original behavior - flatten all points
+            mesh_arrays = [arr.flatten() for arr in mesh_arrays]
+            if solution_names is not None:
+                solution_arrays = {name: self.solution_domain[name].flatten() 
+                                 for name in solution_names}
+
+        # Separate spatial and temporal domains
         spatial_arrays = mesh_arrays[:-1] if self.mesh.temporal_bounds else mesh_arrays
-        spatial_domain = np.column_stack([arr.flatten() for arr in spatial_arrays])
+        spatial_domain = np.column_stack(spatial_arrays) if spatial_arrays else np.array([])
 
         if self.mesh.temporal_bounds:
-            time_domain = mesh_arrays[-1].flatten()[:, None]
+            time_domain = mesh_arrays[-1][:, None] if len(mesh_arrays) > 0 else None
         else:
             time_domain = None
 
         solution_domain = None
         if solution_names is not None:
-            solution_domain = {
-                name: self.solution_domain[name].flatten()[:, None] for name in solution_names
-            }
+            solution_domain = {name: arr[:, None] for name, arr in solution_arrays.items()}
 
         return spatial_domain, time_domain, solution_domain
 
