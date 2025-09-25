@@ -70,6 +70,7 @@ class GeoSpatialDomain:
             spatial_domain: List[np.ndarray],
             shape: List[int],
             temporal_domain: Optional[List[np.ndarray]] = None,
+            spatiotemporal_dims: Optional[List[str]] = None,
             indexing: str = 'ij',
             sparse: bool = False,
             dtype: type = np.float64
@@ -84,15 +85,16 @@ class GeoSpatialDomain:
             sparse: If True, return sparse meshgrid to save memory
             dtype: Data type of the coordinate arrays
         """
-        self.spatial_bounds = spatial_domain
-        self.temporal_bounds = temporal_domain if temporal_domain else None
+        self.spatial_domain = spatial_domain
+        self.temporal_domain = temporal_domain if temporal_domain is not None else None
+        self.spatiotemporal_dims = spatiotemporal_dims if spatiotemporal_dims is not None else None
         self.shape = shape
         self.indexing = indexing
         self.sparse = sparse
         self.dtype = dtype
         self._mesh = None
 
-    def generate_mesh(self) -> List[np.ndarray]:
+    def generate_mesh(self) -> Dict[str, np.ndarray]:
         """Generate coordinate mesh.
 
         Returns:
@@ -104,14 +106,18 @@ class GeoSpatialDomain:
         # Generate spatial coordinates
         axes = [spatial_coords for spatial_coords in self.spatial_domain
             ] # axes is a list of numpy array, each array is length n in self.shape
+        names = self.spatiotemporal_dims
 
 
         # Add time dimension if needed
-        if self.temporal_bounds is not None:
-            axes.append(self.time_domain) #
+        if self.temporal_domain is not None:
+            axes.append(self.temporal_domain) #
+
 
         # Generate mesh
-        self._mesh = np.meshgrid(*axes, indexing=self.indexing, sparse=self.sparse) # the shape of self._mesh is the same as self.shape
+        mesh = np.meshgrid(*axes, indexing=self.indexing, sparse=self.sparse) # the shape of self._mesh is the same as self.shape
+
+        self._mesh = {name: arr for name, arr in zip(names, mesh)}
         return self._mesh
 
     @property
@@ -134,7 +140,7 @@ class GeoSpatialDomain:
         Returns:
             Array of points with shape (..., n_dims)
         """
-        mesh = self.mesh
+        mesh = self.load_mesh  # This will generate the mesh if it doesn't exist
         if isinstance(index, (int, slice)):
             return np.column_stack([dim.flat[index] for dim in mesh])
         elif isinstance(index, tuple):
