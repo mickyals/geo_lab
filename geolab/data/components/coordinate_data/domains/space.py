@@ -48,7 +48,7 @@ from typing import List, Tuple, Union, Optional, Dict, Any
 import numpy as np
 
 
-class GeoSpatialDomain:
+class GeoSpatioTemporalDomain:
     """
     A class to represent and manipulate spatial domains with optional temporal component.
     
