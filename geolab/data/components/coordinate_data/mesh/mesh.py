@@ -42,98 +42,65 @@ Example Usage:
 from typing import Callable, List, Optional, Dict, Tuple
 
 import numpy as np
-import pyDOE as lhs
+
 import warnings
 warnings.filterwarnings('ignore')
 
-from geolab.data.components.coordinate_data.domains.space import GeoSpatialDomain
 
-
-
-class XarrayMesh():
-    """
-    Mesh class for handling xarray datasets with spatial and temporal dimensions.
-    
-    T
-    
-    Args:
-        root_dir: Path to the dataset file
-        read_data_fn: Function to read the dataset file
-        spatial_dims: List of dimension names for spatial coordinates
-        time_dim: Name of the time dimension (if any)
-        solution_vars: List of variable names to include in the solution domain
-    """
-    
-    def __init__(
-        self,
-        root_dir: str,
-        read_data_fn: Callable,
-        spatial_dims: Optional[List[str]] = None,
-        time_dim: Optional[str] = None,
-        solution_vars: Optional[List[str]] = None
-    ):
+class ERA5MultiData():
+    def __init__(self, root_dir, read_data_fn, spatial_vars, time_var, solution_vars):
         """
-        Initialize the Xarray mesh with the given dataset and dimensions.
-        
-        Args:
-            root_dir: Path to the dataset file or URL
-            read_data_fn: Function to read the dataset (e.g., xr.open_dataset)
-            spatial_dims: List of dimension names for spatial coordinates
-            time_dim: Optional name of the time dimension
-            solution_vars: Optional list of variable names to include in the solution domain
+        Initialize an ERA5MultiData instance.
+
+        Parameters
+        ----------
+        root_dir : str
+            Root directory of the data
+        read_data_fn : callable
+            Function to read in the data
+        spatial_vars : list
+            List of spatial variables
+        time_var : list
+            List of time variables
+        solution_vars : list
+            List of solution variables
         """
-        # Load dataset using provided function
-        dataset = read_data_fn(root_dir)
-        
-        # Determine spatial dimensions if not provided
-        if spatial_dims is None:
-            spatial_dims = [
-                dim for dim in dataset.dims 
-                if dim != time_dim  # Exclude time dimension if specified
-            ]
-        
-        # Get time dimension if it exists in the dataset
-        if time_dim is not None and time_dim not in dataset.dims:
-            time_dim = None
-        
-        # Extract spatial domain coordinates
-        spatial_domain = [dataset.coords[dim].values for dim in spatial_dims]
-        
-        # Handle temporal domain if it exists
-        temporal_domain = None
-        if time_dim is not None:
-            temporal_domain = dataset.coords[time_dim].values
-
-        spatiotemporal_dims = spatial_dims + [time_dim] if time_dim is not None else spatial_dims
-
-        # Determine shape including time if it exists
-        shape = [len(arr) for arr in spatial_domain]
-        if time_dim is not None:
-            shape.append(len(temporal_domain))
-        
-        # Extract solution variables and ensure they have the same shape as the mesh
-        if solution_vars is None:
-            solution_domain = {var: dataset[var].values for var in dataset.data_vars}
-        else:
-            solution_domain = {var: dataset[var].values for var in solution_vars}
-        
-        # Calculate spatial bounds
-        lb_space = {dim: arr.min() for dim, arr in zip(spatial_dims, spatial_domain)}
-        ub_space = {dim: arr.max() for dim, arr in zip(spatial_dims, spatial_domain)}
-        
-        # Calculate temporal bounds if time dimension exists
-        lb_time = {time_dim: temporal_domain.min()} if time_dim is not None else None
-        ub_time = {time_dim: temporal_domain.max()} if time_dim is not None else None
-        
-        # Calculate solution bounds
-        lb_solution = {key: np.nanmin(arr) for key, arr in solution_domain.items()}
-        ub_solution = {key: np.nanmax(arr) for key, arr in solution_domain.items()}
-        
-
-        
         # Initialize base class attributes
+
+        dataset = read_data_fn(root_dir)
+
+        # Convert dataset coords to a dict with NumPy arrays
+        coords_domain = {var: arr.values for var, arr in dataset.coords.items()}
+
+        # Select spatial and temporal variables directly using set intersection
+        spatial_keys = set(spatial_vars) & coords_domain.keys()
+        temporal_keys = set(time_var) & coords_domain.keys()
+
+        spatial_domain = {k: coords_domain[k] for k in spatial_keys}
+        temporal_domain = {k: coords_domain[k] for k in temporal_keys}
+
+        # Solution variables
+        solution_keys = set(solution_vars) & dataset.data_vars.keys()
+        solution_domain = {k: dataset[k].values for k in solution_keys}
+        # For spatial variables
+        lb_space = {var: np.min(arr) for var, arr in spatial_domain.items()}
+        ub_space = {var: np.max(arr) for var, arr in spatial_domain.items()}
+
+        # For temporal variables
+        lb_time = {var: np.min(arr) for var, arr in temporal_domain.items()}
+        ub_time = {var: np.max(arr) for var, arr in temporal_domain.items()}
+
+        # For solution variables
+        lb_solution = {var: np.min(arr) for var, arr in solution_domain.items()}
+        ub_solution = {var: np.max(arr) for var, arr in solution_domain.items()}
+
+
+        # Initialize attributes
         self.solution_domain = solution_domain
-        self.dataset_coords = {name: len(coord) for name, coord in dataset.coords.items()}
+        self.shape = dataset[solution_vars[0]].values.shape
+
+        self.dataset_coords = {var: len(arr) for var, arr in dataset.coords.items()} #the order and shape of dims in solution domain
+
         self.lower_bounds = {
             'spatial': lb_space,
             'time': lb_time,
@@ -144,12 +111,68 @@ class XarrayMesh():
             'time': ub_time,
             'solution': ub_solution
         }
+
+        self.spatial_domain = spatial_domain
+        self.temporal_domain = temporal_domain
+
+    def collection_points(self, num_points, use_lhs=True):
+        """
+        Sample points from the dataset's domain.
         
-        # Initialize the spatial domain handler
-        self.mesh = GeoSpatialDomain(
-            spatial_domain=spatial_domain,
-            shape=shape,
-            temporal_domain=temporal_domain,
-            spatiotemporal_dims=spatiotemporal_dims,
-        )
-        self.dims_keys = spatiotemporal_dims
+        Parameters
+        ----------
+        num_points : int
+            Number of points to sample
+        use_lhs : bool, optional
+            Whether to use Latin Hypercube Sampling (default: True). 
+            If False, uses uniform random sampling.
+            
+        Returns
+        -------
+        dict
+            Dictionary containing sampled points for all dimensions (spatial + temporal)
+            with variable names as keys.
+        """
+        spatial_keys = list(self.spatial_domain.keys())
+        time_keys = list(self.temporal_domain.keys())
+
+        spatial_dim = len(spatial_keys)
+        total_dim = spatial_dim + len(time_keys)
+
+        # Get lower and upper bounds as arrays in the same order
+        lb = np.array([self.lower_bounds['spatial'][k] for k in spatial_keys] +
+                      [self.lower_bounds['time'][k] for k in time_keys])
+        ub = np.array([self.upper_bounds['spatial'][k] for k in spatial_keys] +
+                      [self.upper_bounds['time'][k] for k in time_keys])
+
+        if use_lhs:
+            # Latin Hypercube Sampling
+            from pyDOE import lhs as lhs_sample  # Import here to avoid circular imports
+            # Generate samples in [0, 1]^total_dim
+            samples = lhs_sample(total_dim, samples=num_points)
+            # Scale samples to the actual ranges
+            scaled_samples = lb + (ub - lb) * samples
+            
+            # Combine spatial and temporal components into a single dictionary
+            spatiotemporal_domain = {}
+            for i, var in enumerate(spatial_keys + time_keys):
+                spatiotemporal_domain[var] = scaled_samples[:, i]
+        else:
+            # Flatten the mesh (all combinations of spatial + time coordinates)
+            spatial_grid = np.meshgrid(*[self.spatial_domain[k] for k in spatial_keys],
+                                     indexing='ij')
+            time_grid = np.meshgrid(*[self.temporal_domain[k] for k in time_keys],
+                                  indexing='ij') if time_keys else []
+            
+            # Create a single dictionary with all variables
+            spatiotemporal_domain = {}
+            for var, grid in zip(spatial_keys, spatial_grid):
+                spatiotemporal_domain[var] = grid.flatten()
+            
+            for var, grid in zip(time_keys, time_grid):
+                spatiotemporal_domain[var] = grid.flatten()
+
+        return spatiotemporal_domain
+
+    def on_initial_boundary(self, solutions=True):
+        pass
