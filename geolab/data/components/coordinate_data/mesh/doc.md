@@ -28,6 +28,98 @@ Initialize an ERA5MultiData instance.
 - `read_data_fn` (callable): Function that takes a root directory and returns an xarray Dataset.
 - `solution_vars` (list[str]): List of variable names to include in the solution (e.g., ['z', 't', 'u', 'v', 'w']).
 
+**Available Variables:**
+
+#### Coordinate Variables:
+- `valid_time`: Time dimension (24 time steps)
+- `pressure_level`: Vertical pressure levels (17 levels from 200hPa to 850hPa)
+- `latitude`: Latitude coordinates (-90° to 90°)
+- `longitude`: Longitude coordinates (0° to 359.75°)
+
+#### Solution Variables:
+- `z`: Geopotential (m²/s²)
+- `t`: Temperature (K)
+- `u`: Eastward wind component (m/s)
+- `v`: Northward wind component (m/s)
+- `w`: Vertical velocity (Pa/s)
+
+**Initialized Attributes:**
+
+- `lower_bounds`: Dictionary containing minimum values for both coordinates and solution variables
+  ```python
+  {
+      'coords': {
+          'valid_time': float,    # Minimum time value
+          'pressure_level': float,  # Minimum pressure level (hPa)
+          'latitude': float,      # Minimum latitude (-90°)
+          'longitude': float      # Minimum longitude (0°)
+      },
+      'solution': {
+          'z': float,  # Minimum geopotential (m²/s²)
+          't': float,  # Minimum temperature (K)
+          'u': float,  # Minimum eastward wind (m/s)
+          'v': float,  # Minimum northward wind (m/s)
+          'w': float   # Minimum vertical velocity (Pa/s)
+      }
+  }
+  ```
+
+- `upper_bounds`: Dictionary containing maximum values for both coordinates and solution variables
+  ```python
+  {
+      'coords': {
+          'valid_time': float,    # Maximum time value
+          'pressure_level': float,  # Maximum pressure level (hPa)
+          'latitude': float,      # Maximum latitude (90°)
+          'longitude': float      # Maximum longitude (359.75°)
+      },
+      'solution': {
+          'z': float,  # Maximum geopotential (m²/s²)
+          't': float,  # Maximum temperature (K)
+          'u': float,  # Maximum eastward wind (m/s)
+          'v': float,  # Maximum northward wind (m/s)
+          'w': float   # Maximum vertical velocity (Pa/s)
+      }
+  }
+  ```
+
+- `solution_mean`: Dictionary of mean values for each solution variable
+  ```python
+  {
+      'z': float,  # Mean geopotential (m²/s²)
+      't': float,  # Mean temperature (K)
+      'u': float,  # Mean eastward wind (m/s)
+      'v': float,  # Mean northward wind (m/s)
+      'w': float   # Mean vertical velocity (Pa/s)
+  }
+  ```
+
+- `solution_std`: Dictionary of standard deviations for each solution variable
+  ```python
+  {
+      'z': float,  # Standard deviation of geopotential (m²/s²)
+      't': float,  # Standard deviation of temperature (K)
+      'u': float,  # Standard deviation of eastward wind (m/s)
+      'v': float,  # Standard deviation of northward wind (m/s)
+      'w': float   # Standard deviation of vertical velocity (Pa/s)
+  }
+  ```
+
+**Example Usage:**
+```python
+# Accessing coordinate bounds
+min_lat = era5_data.lower_bounds['coords']['latitude']
+max_lon = era5_data.upper_bounds['coords']['longitude']
+
+# Accessing solution bounds
+min_temp = era5_data.lower_bounds['solution']['t']
+max_wind = era5_data.upper_bounds['solution']['u']
+
+# Accessing statistics
+temp_mean = era5_data.solution_mean['t']
+temp_std = era5_data.solution_std['t']
+```
+
 ## Core Methods
 
 ### Surface Extraction Methods
