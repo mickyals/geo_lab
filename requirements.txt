@@ -1,3 +1,11 @@
+# --------- geoscience --------- #
+xarray
+netcdf4
+zarr
+numcodecs[pcodec]==0.15.1
+dask
+
+
 # --------- pytorch --------- #
 torch>=2.0.0
 torchvision>=0.15.0

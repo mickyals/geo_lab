@@ -79,33 +79,50 @@ class ERA5MultiData:
             Function that takes a root directory and returns an xarray Dataset.
         solution_vars : list of str
             List of variable names to include in the solution (e.g., ['z', 't', 'u', 'v', 'w']).
+            Note: 'w' (vertical velocity) will be automatically converted from Pa/s to m/s.
         """
+
+        
         # Initialize base class attributes
 
-        dataset = read_data_fn(root_dir)
+        with read_data_fn(root_dir) as dataset:
 
-        lb_coords = {var: np.min(arr.values) for var, arr in dataset.coords.items()}
-        ub_coords = {var: np.max(arr.values) for var, arr in dataset.coords.items()}
+            coords = [coord for coord in dataset.coords]
 
-        lb_solution = {}
-        ub_solution = {}
-        solution_mean = {}
-        solution_std = {}
+            # Get coordinate bounds
+            lb_coords = {var: np.min(arr.values) for var, arr in dataset.coords.items()}
+            ub_coords = {var: np.max(arr.values) for var, arr in dataset.coords.items()}
+            lb_coords["longitude"] = (((lb_coords["longitude"] + 180) % 360) - 180)
+            ub_coords["longitude"] = (((ub_coords["longitude"] + 180) % 360) - 180)
 
-        for var in solution_vars:
-            var_data = dataset[var].values
-            lb_solution[var] = np.min(var_data)
-            ub_solution[var] = np.max(var_data)
-            solution_mean[var] = np.mean(var_data)
-            solution_std[var] = np.std(var_data)
+            shape = dataset.solution_vars[0].shape
+            num_points = np.prod(shape)
 
+            # Initialize dictionaries for solution statistics
+            lb_solution = {}
+            ub_solution = {}
+            solution_mean = {}
+            solution_std = {}
 
+            for var in solution_vars:
+                var_data = dataset[var].values
 
+                # (Optional) compute stats here if you’re still tracking bounds/mean/std
+                lb_solution[var] = np.min(var_data)
+                ub_solution[var] = np.max(var_data)
+                solution_mean[var] = np.mean(var_data)
+                solution_std[var] = np.std(var_data)
 
+        # Store instance variables
         self.read_data_fn = read_data_fn
         self.root_dir = root_dir
         self.solution_vars = solution_vars
+        self._dataset = dataset  # Store the modified dataset
+        self.dataset_coords = coords
+        self.shape = shape
+        self.num_points = num_points
 
+        # Set bounds
         self.lower_bounds = {
             'coords': lb_coords,
             'solution': lb_solution
@@ -115,6 +132,7 @@ class ERA5MultiData:
             'solution': ub_solution
         }
 
+        # Store statistics
         self.solution_mean = solution_mean
         self.solution_std = solution_std
 
@@ -166,6 +184,7 @@ class ERA5MultiData:
 
                 assert len(pressure_surface_coords['valid_time']) == len(pressure_surface_solutions[self.solution_vars[0]]) \
                 == len(pressure_surface_coords['latitude']) == len(pressure_surface_coords['longitude'])
+
                 
                 return pressure_surface_coords, pressure_surface_solutions
             
@@ -214,6 +233,7 @@ class ERA5MultiData:
                 assert len(longitude_surface_coords['valid_time']) == len(longitude_surface_solutions[self.solution_vars[0]]) \
                 == len(longitude_surface_coords['latitude']) == len(longitude_surface_coords['longitude'])
 
+
                 return longitude_surface_coords, longitude_surface_solutions
 
             return longitude_surface_coords
@@ -261,6 +281,7 @@ class ERA5MultiData:
                 assert len(latitude_surface_coords['valid_time']) == len(latitude_surface_solutions[self.solution_vars[0]]) \
                 == len(latitude_surface_coords['latitude']) == len(latitude_surface_coords['longitude'])
 
+
                 return latitude_surface_coords, latitude_surface_solutions
 
             return latitude_surface_coords
@@ -305,6 +326,7 @@ class ERA5MultiData:
                 assert len(inner_volume_solutions[self.solution_vars[0]]) \
                 == len(inner_volume_coords['latitude']) == len(inner_volume_coords['longitude']) \
                        == len(inner_volume_coords['pressure_level']) == len(inner_volume_coords['valid_time'])
+
 
                 return inner_volume_coords, inner_volume_solutions
 
@@ -351,10 +373,12 @@ class ERA5MultiData:
                 for var in self.solution_vars:
                     initial_surface_solutions[var] = base[var].values.ravel() + top[var].values.ravel()
 
-                    assert len(initial_surface_solutions[self.solution_vars[0]]) \
+                assert len(initial_surface_solutions[self.solution_vars[0]]) \
                     == len(initial_surface_coords['latitude']) == len(initial_surface_coords['longitude']) \
                     == len(initial_surface_coords['pressure_level']) == len(initial_surface_coords['valid_time'])
 
+                                                            
+                
                 return initial_surface_coords, initial_surface_solutions
 
             return initial_surface_coords
@@ -394,3 +418,54 @@ class ERA5MultiData:
         collocation_points = {name: points[:, i] for i, name in enumerate(coord_names)}
         
         return collocation_points
+
+
+    def get_full_data(self):
+        """Extract all data points from the dataset as flattened arrays.
+        
+        This method loads the entire dataset and returns all coordinate points and solution
+        variables as flattened 1D arrays. This is useful when you need to work with the
+        complete dataset in memory, such as for training machine learning models or
+        performing full-domain analysis.
+        
+        Returns
+        -------
+        tuple
+            A tuple containing two dictionaries:
+            - coords: Dictionary where keys are coordinate names (e.g., 'valid_time', 'pressure_level',
+              'latitude', 'longitude') and values are 1D numpy arrays of coordinate values.
+            - solutions: Dictionary where keys are variable names (as specified in solution_vars)
+              and values are 1D numpy arrays of the corresponding variable values.
+              
+        Example
+        -------
+        >>> era5 = ERA5MultiData(root_dir, xr.open_dataset, ['z', 't', 'u', 'v', 'w'])
+        >>> coords, solutions = era5.get_full_data()
+        >>> # Access coordinate arrays
+        >>> times = coords['valid_time']
+        >>> lats = coords['latitude']
+        >>> # Access solution variables
+        >>> temperatures = solutions['t']
+        >>> u_wind = solutions['u']
+        
+        Notes
+        -----
+        - The returned arrays are flattened (raveled) to 1D, with all points in the grid.
+        - The order of points is consistent between coordinate and solution arrays.
+        - This method loads the entire dataset into memory, which may be large for high-resolution
+          or long time series data.
+        - The method uses a context manager to ensure proper file handling.
+        """
+        with self.read_data_fn(self.root_dir) as ds:
+            # Create meshgrid of all coordinate points
+            coords_array = [ds[coord].values for coord in ds.coords]
+            mesh = np.meshgrid(*coords_array, indexing='ij')
+            
+            # Create dictionary of flattened coordinate arrays
+            coords = {coord: mesh[i].ravel() for i, coord in enumerate(ds.coords)}
+            
+            # Create dictionary of flattened solution variables
+            solutions = {var: ds[var].values.ravel() for var in self.solution_vars}
+
+            
+            return coords, solutions

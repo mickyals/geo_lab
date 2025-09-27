@@ -1,0 +1,10 @@
+_target_: geolab.data.datamodule.troposphere_datamodule.TroposphereDataModule
+root_dir: ${paths.root_dir}
+read_data_fn: xr.open_dataset
+solution_vars: ["u", "v", "w", "z"]
+prc_points: 0.3
+batch_size: 10000
+val_split: 0.2
+test_split: 0.2
+num_workers: 0
+pin_memory: False
