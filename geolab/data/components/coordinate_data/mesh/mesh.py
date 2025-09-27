@@ -42,13 +42,13 @@ Example Usage:
 from typing import Callable, List, Optional, Dict, Tuple
 
 import numpy as np
-
+from pyDOE import lhs
 import warnings
 warnings.filterwarnings('ignore')
 
 
 class ERA5MultiData():
-    def __init__(self, root_dir, read_data_fn, spatial_vars, time_var, solution_vars):
+    def __init__(self, root_dir, read_data_fn, solution_vars):
         """
         Initialize an ERA5MultiData instance.
 
@@ -69,110 +69,223 @@ class ERA5MultiData():
 
         dataset = read_data_fn(root_dir)
 
-        # Convert dataset coords to a dict with NumPy arrays
-        coords_domain = {var: arr.values for var, arr in dataset.coords.items()}
+        lb_coords = {var: np.min(arr.values) for var, arr in dataset.coords.items()}
+        ub_coords = {var: np.max(arr.values) for var, arr in dataset.coords.items()}
 
-        # Select spatial and temporal variables directly using set intersection
-        spatial_keys = set(spatial_vars) & coords_domain.keys()
-        temporal_keys = set(time_var) & coords_domain.keys()
+        lb_solution = {}
+        ub_solution = {}
+        solution_mean = {}
+        solution_std = {}
 
-        spatial_domain = {k: coords_domain[k] for k in spatial_keys}
-        temporal_domain = {k: coords_domain[k] for k in temporal_keys}
-
-        # Solution variables
-        solution_keys = set(solution_vars) & dataset.data_vars.keys()
-        solution_domain = {k: dataset[k].values for k in solution_keys}
-        # For spatial variables
-        lb_space = {var: np.min(arr) for var, arr in spatial_domain.items()}
-        ub_space = {var: np.max(arr) for var, arr in spatial_domain.items()}
-
-        # For temporal variables
-        lb_time = {var: np.min(arr) for var, arr in temporal_domain.items()}
-        ub_time = {var: np.max(arr) for var, arr in temporal_domain.items()}
-
-        # For solution variables
-        lb_solution = {var: np.min(arr) for var, arr in solution_domain.items()}
-        ub_solution = {var: np.max(arr) for var, arr in solution_domain.items()}
+        for var in solution_vars:
+            var_data = dataset[var].values
+            lb_solution[var] = np.min(var_data)
+            ub_solution[var] = np.max(var_data)
+            solution_mean[var] = np.mean(var_data)
+            solution_std[var] = np.std(var_data)
 
 
-        # Initialize attributes
-        self.solution_domain = solution_domain
-        self.shape = dataset[solution_vars[0]].values.shape
 
-        self.dataset_coords = {var: len(arr) for var, arr in dataset.coords.items()} #the order and shape of dims in solution domain
+
+        self.read_data_fn = read_data_fn
+        self.root_dir = root_dir
+        self.solution_vars = solution_vars
 
         self.lower_bounds = {
-            'spatial': lb_space,
-            'time': lb_time,
+            'coords': lb_coords,
             'solution': lb_solution
         }
         self.upper_bounds = {
-            'spatial': ub_space,
-            'time': ub_time,
+            'coords': ub_coords,
             'solution': ub_solution
         }
 
-        self.spatial_domain = spatial_domain
-        self.temporal_domain = temporal_domain
+        self.solution_mean = solution_mean
+        self.solution_std = solution_std
 
-    def collection_points(self, num_points, use_lhs=True):
-        """
-        Sample points from the dataset's domain.
+
+    def get_pressure_surface(self, valid_time_idx=0, pressure_level_idx=0, solutions=True):
+        """ corresponds to upper and lower surface slicing logic at a discrete time step"""
+
+        with self.read_data_fn(self.root_dir) as ds:
+            get_pressure_surface_ds = ds.isel(valid_time=valid_time_idx, pressure_level=pressure_level_idx)
+            
+            # Create meshgrid for all coordinate dimensions
+            coord_arrays = [get_pressure_surface_ds[coord].values for coord in get_pressure_surface_ds.coords]
+            mesh = np.meshgrid(*coord_arrays, indexing='ij')
+            
+            # Create dictionary with raveled coordinate arrays
+            pressure_surface_coords = {
+                coord: mesh[i].ravel() 
+                for i, coord in enumerate(get_pressure_surface_ds.coords)
+            }
+            
+            if solutions:
+                pressure_surface_solutions = {}
+                for var in self.solution_vars:
+                    pressure_surface_solutions[var] = get_pressure_surface_ds[var].values.ravel()
+
+                assert len(pressure_surface_coords['valid_time']) == len(pressure_surface_solutions[self.solution_vars[0]]) \
+                == len(pressure_surface_coords['latitude']) == len(pressure_surface_coords['longitude'])
+                
+                return pressure_surface_coords, pressure_surface_solutions
+            
+            return pressure_surface_coords
+
+
+    def get_longitude_surface(self, valid_time_idx=0, longitude_idx=0, solutions=True):
+
+        """ corresponds to the east west boundary slicing logic at a discrete timestep"""
+        with self.read_data_fn(self.root_dir) as ds:
+            get_longitude_surface_ds = ds.isel(valid_time=valid_time_idx, longitude=longitude_idx)
+
+            # Create meshgrid for all coordinate dimensions
+            coord_arrays = [get_longitude_surface_ds[coord].values for coord in get_longitude_surface_ds.coords]
+            mesh = np.meshgrid(*coord_arrays, indexing='ij')
+
+            # Create dictionary with raveled coordinate arrays
+            longitude_surface_coords = {
+                coord: mesh[i].ravel()
+                for i, coord in enumerate(get_longitude_surface_ds.coords)
+            }
+
+            if solutions:
+                longitude_surface_solutions = {}
+                for var in self.solution_vars:
+                    longitude_surface_solutions[var] = get_longitude_surface_ds[var].values.ravel()
+
+                assert len(longitude_surface_coords['valid_time']) == len(longitude_surface_solutions[self.solution_vars[0]]) \
+                == len(longitude_surface_coords['latitude']) == len(longitude_surface_coords['longitude'])
+
+                return longitude_surface_coords, longitude_surface_solutions
+
+            return longitude_surface_coords
+
+    def get_latitude_surface(self, valid_time_idx=0, latitude_idx=0, solutions=True):
+        """corresponds to north south boundary slicing logic at a discrete timestep"""
+
+        with self.read_data_fn(self.root_dir) as ds:
+            get_latitude_surface_ds = ds.isel(valid_time=valid_time_idx, latitude=latitude_idx)
+
+            # Create meshgrid for all coordinate dimensions
+            coord_arrays = [get_latitude_surface_ds[coord].values for coord in get_latitude_surface_ds.coords]
+            mesh = np.meshgrid(*coord_arrays, indexing='ij')
+
+            # Create dictionary with raveled coordinate arrays
+            latitude_surface_coords = {
+                coord: mesh[i].ravel()
+                for i, coord in enumerate(get_latitude_surface_ds.coords)
+            }
+
+            if solutions:
+                latitude_surface_solutions = {}
+                for var in self.solution_vars:
+                    latitude_surface_solutions[var] = get_latitude_surface_ds[var].values.ravel()
+
+                assert len(latitude_surface_coords['valid_time']) == len(latitude_surface_solutions[self.solution_vars[0]]) \
+                == len(latitude_surface_coords['latitude']) == len(latitude_surface_coords['longitude'])
+
+                return latitude_surface_coords, latitude_surface_solutions
+
+            return latitude_surface_coords
+
+
+    def get_inner_volume(self, solutions=True):
+        """ corresponds to getting the innards of the volume, ignoring surface points"""
+
+        with self.read_data_fn(self.root_dir) as ds:
+            inner_volume_ds = ds.isel(pressure_level=slice(1, -1), latitude=slice(1, -1), longitude=slice(1, -1))
+
+            # Create meshgrid for all coordinate dimensions
+            coord_arrays = [inner_volume_ds[coord].values for coord in inner_volume_ds.coords]
+            mesh = np.meshgrid(*coord_arrays, indexing='ij')
+
+            # Create dictionary with raveled coordinate arrays
+            inner_volume_coords = {
+                coord: mesh[i].ravel()
+                for i, coord in enumerate(inner_volume_ds.coords)
+            }
+
+            if solutions:
+                inner_volume_solutions = {}
+                for var in self.solution_vars:
+                    inner_volume_solutions[var] = inner_volume_ds[var].values.ravel()
+
+                assert len(inner_volume_solutions[self.solution_vars[0]]) \
+                == len(inner_volume_coords['latitude']) == len(inner_volume_coords['longitude']) \
+                       == len(inner_volume_coords['pressure_level']) == len(inner_volume_coords['valid_time'])
+
+                return inner_volume_coords, inner_volume_solutions
+
+            return inner_volume_coords
+
+    def get_initial_surface(self, solutions=True):
+        """ corresponds to getting the initial surface, i.e. the first time step
+        since i am on a global scale i only need the base and top of atmosphere"""
+
+        with self.read_data_fn(self.root_dir) as ds:
+            base = ds.isel(valid_time=0, pressure_level=0)
+            top = ds.isel(valid_time=0, pressure_level=-1)
+
+            base_coords_arrays = [base[coord].values for coord in base.coords]
+            top_coords_arrays = [top[coord].values for coord in top.coords]
+
+            base_mesh = np.meshgrid(*base_coords_arrays, indexing='ij')
+            top_mesh = np.meshgrid(*top_coords_arrays, indexing='ij')
+
+            base_coords = [base_mesh[i].ravel() for i in base_mesh]
+            top_coords = [top_mesh[i].ravel() for i in top_mesh]
+
+            initial_surface_coords = {
+                coord: base_coords[i] + top_coords[i]
+                for i, coord in enumerate(base.coords)
+            }
+
+            if solutions:
+                initial_surface_solutions = {}
+                for var in self.solution_vars:
+                    initial_surface_solutions[var] = base[var].values.ravel() + top[var].values.ravel()
+
+                    assert len(initial_surface_solutions[self.solution_vars[0]]) \
+                    == len(initial_surface_coords['latitude']) == len(initial_surface_coords['longitude']) \
+                    == len(initial_surface_coords['pressure_level']) == len(initial_surface_coords['valid_time'])
+
+                return initial_surface_coords, initial_surface_solutions
+
+            return initial_surface_coords
+
+    def get_collocation_points(self, num_samples: int, use_lhs: bool = True) -> Dict[str, np.ndarray]:
+        """Generate collocation points within the domain bounds using Latin Hypercube Sampling.
         
         Parameters
         ----------
-        num_points : int
-            Number of points to sample
+        num_samples : int
+            Number of collocation points to generate
         use_lhs : bool, optional
-            Whether to use Latin Hypercube Sampling (default: True). 
-            If False, uses uniform random sampling.
+            Whether to use Latin Hypercube Sampling (True) or uniform random sampling (False).
+            Default is True.
             
         Returns
         -------
-        dict
-            Dictionary containing sampled points for all dimensions (spatial + temporal)
-            with variable names as keys.
+        Dict[str, np.ndarray]
+            Dictionary where keys are coordinate names and values are 1D arrays of sampled points.
+            The arrays are aligned such that the i-th element of each array corresponds to the same point.
         """
-        spatial_keys = list(self.spatial_domain.keys())
-        time_keys = list(self.temporal_domain.keys())
-
-        spatial_dim = len(spatial_keys)
-        total_dim = spatial_dim + len(time_keys)
-
-        # Get lower and upper bounds as arrays in the same order
-        lb = np.array([self.lower_bounds['spatial'][k] for k in spatial_keys] +
-                      [self.lower_bounds['time'][k] for k in time_keys])
-        ub = np.array([self.upper_bounds['spatial'][k] for k in spatial_keys] +
-                      [self.upper_bounds['time'][k] for k in time_keys])
-
+        # Get lower and upper bounds for all coordinates
+        coord_names = ['valid_time', 'pressure_level', 'latitude', 'longitude']
+        lb = np.array([self.lower_bounds['coords'][dim] for dim in coord_names])
+        ub = np.array([self.upper_bounds['coords'][dim] for dim in coord_names])
+        
         if use_lhs:
-            # Latin Hypercube Sampling
-            from pyDOE import lhs as lhs_sample  # Import here to avoid circular imports
-            # Generate samples in [0, 1]^total_dim
-            samples = lhs_sample(total_dim, samples=num_points)
-            # Scale samples to the actual ranges
-            scaled_samples = lb + (ub - lb) * samples
-            
-            # Combine spatial and temporal components into a single dictionary
-            spatiotemporal_domain = {}
-            for i, var in enumerate(spatial_keys + time_keys):
-                spatiotemporal_domain[var] = scaled_samples[:, i]
+            # Generate points using Latin Hypercube Sampling in [0,1]^d
+            points_01 = lhs(len(coord_names), samples=num_samples)
+            # Scale to [lb, ub]
+            points = lb + (ub - lb) * points_01
         else:
-            # Flatten the mesh (all combinations of spatial + time coordinates)
-            spatial_grid = np.meshgrid(*[self.spatial_domain[k] for k in spatial_keys],
-                                     indexing='ij')
-            time_grid = np.meshgrid(*[self.temporal_domain[k] for k in time_keys],
-                                  indexing='ij') if time_keys else []
-            
-            # Create a single dictionary with all variables
-            spatiotemporal_domain = {}
-            for var, grid in zip(spatial_keys, spatial_grid):
-                spatiotemporal_domain[var] = grid.flatten()
-            
-            for var, grid in zip(time_keys, time_grid):
-                spatiotemporal_domain[var] = grid.flatten()
-
-        return spatiotemporal_domain
-
-    def on_initial_boundary(self, solutions=True):
-        pass
+            # Simple random sampling
+            points = np.random.uniform(lb, ub, size=(num_samples, len(coord_names)))
+        
+        # Convert to dictionary with coordinate names as keys
+        collocation_points = {name: points[:, i] for i, name in enumerate(coord_names)}
+        
+        return collocation_points
