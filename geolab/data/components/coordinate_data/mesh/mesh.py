@@ -47,23 +47,38 @@ import warnings
 warnings.filterwarnings('ignore')
 
 
-class ERA5MultiData():
-    def __init__(self, root_dir, read_data_fn, solution_vars):
-        """
-        Initialize an ERA5MultiData instance.
+class ERA5MultiData:
+    """A class for handling and processing ERA5 weather data on a structured grid.
+    
+    This class provides methods to extract and manipulate weather data from ERA5 datasets,
+    including extracting 2D surfaces, 3D volumes, and generating collocation points for
+    physics-informed machine learning applications.
+    
+    Attributes
+    ----------
+    root_dir : str
+        Path to the root directory containing the ERA5 data files.
+    read_data_fn : callable
+        Function to read the data from the root directory.
+    solution_vars : list of str
+        List of variable names to include in the solution.
+    lower_bounds : dict
+        Dictionary containing the minimum values for each coordinate.
+    upper_bounds : dict
+        Dictionary containing the maximum values for each coordinate.
+    """
+    
+    def __init__(self, root_dir: str, read_data_fn: callable, solution_vars: list[str]):
+        """Initialize an ERA5MultiData instance.
 
         Parameters
         ----------
         root_dir : str
-            Root directory of the data
+            Path to the root directory containing the ERA5 data files.
         read_data_fn : callable
-            Function to read in the data
-        spatial_vars : list
-            List of spatial variables
-        time_var : list
-            List of time variables
-        solution_vars : list
-            List of solution variables
+            Function that takes a root directory and returns an xarray Dataset.
+        solution_vars : list of str
+            List of variable names to include in the solution (e.g., ['z', 't', 'u', 'v', 'w']).
         """
         # Initialize base class attributes
 
@@ -104,8 +119,32 @@ class ERA5MultiData():
         self.solution_std = solution_std
 
 
-    def get_pressure_surface(self, valid_time_idx=0, pressure_level_idx=0, solutions=True):
-        """ corresponds to upper and lower surface slicing logic at a discrete time step"""
+    def get_pressure_surface(self, valid_time_idx: int = 0, pressure_level_idx: int = 0, solutions: bool = True) -> tuple:
+        """Extract a 2D surface of data at a specific pressure level and time.
+        
+        This method extracts a 2D horizontal slice of the data at the specified
+        pressure level and time index, optionally including the solution variables.
+        
+        Parameters
+        ----------
+        valid_time_idx : int, optional
+            Index of the time step to extract, by default 0
+        pressure_level_idx : int, optional
+            Index of the pressure level to extract, by default 0
+        solutions : bool, optional
+            Whether to include solution variables, by default True
+            
+        Returns
+        -------
+        tuple
+            If solutions is True, returns a tuple of (coords_dict, solutions_dict)
+            If solutions is False, returns coords_dict
+            
+            coords_dict: dict
+                Dictionary with coordinate arrays (valid_time, latitude, longitude)
+            solutions_dict: dict
+                Dictionary with solution variable arrays at the specified surface
+        """
 
         with self.read_data_fn(self.root_dir) as ds:
             get_pressure_surface_ds = ds.isel(valid_time=valid_time_idx, pressure_level=pressure_level_idx)
@@ -133,9 +172,27 @@ class ERA5MultiData():
             return pressure_surface_coords
 
 
-    def get_longitude_surface(self, valid_time_idx=0, longitude_idx=0, solutions=True):
-
-        """ corresponds to the east west boundary slicing logic at a discrete timestep"""
+    def get_longitude_surface(self, valid_time_idx: int = 0, longitude_idx: int = 0, solutions: bool = True) -> tuple:
+        """Extract a 2D surface of data at a specific longitude and time.
+        
+        This method extracts a 2D vertical slice (latitude-pressure) of the data at the
+        specified longitude and time index, optionally including the solution variables.
+        
+        Parameters
+        ----------
+        valid_time_idx : int, optional
+            Index of the time step to extract, by default 0
+        longitude_idx : int, optional
+            Index of the longitude to extract, by default 0
+        solutions : bool, optional
+            Whether to include solution variables, by default True
+            
+        Returns
+        -------
+        tuple
+            If solutions is True, returns a tuple of (coords_dict, solutions_dict)
+            If solutions is False, returns coords_dict
+        """
         with self.read_data_fn(self.root_dir) as ds:
             get_longitude_surface_ds = ds.isel(valid_time=valid_time_idx, longitude=longitude_idx)
 
@@ -161,8 +218,27 @@ class ERA5MultiData():
 
             return longitude_surface_coords
 
-    def get_latitude_surface(self, valid_time_idx=0, latitude_idx=0, solutions=True):
-        """corresponds to north south boundary slicing logic at a discrete timestep"""
+    def get_latitude_surface(self, valid_time_idx: int = 0, latitude_idx: int = 0, solutions: bool = True) -> tuple:
+        """Extract a 2D surface of data at a specific latitude and time.
+        
+        This method extracts a 2D vertical slice (longitude-pressure) of the data at the
+        specified latitude and time index, optionally including the solution variables.
+        
+        Parameters
+        ----------
+        valid_time_idx : int, optional
+            Index of the time step to extract, by default 0
+        latitude_idx : int, optional
+            Index of the latitude to extract, by default 0
+        solutions : bool, optional
+            Whether to include solution variables, by default True
+            
+        Returns
+        -------
+        tuple
+            If solutions is True, returns a tuple of (coords_dict, solutions_dict)
+            If solutions is False, returns coords_dict
+        """
 
         with self.read_data_fn(self.root_dir) as ds:
             get_latitude_surface_ds = ds.isel(valid_time=valid_time_idx, latitude=latitude_idx)
@@ -190,8 +266,23 @@ class ERA5MultiData():
             return latitude_surface_coords
 
 
-    def get_inner_volume(self, solutions=True):
-        """ corresponds to getting the innards of the volume, ignoring surface points"""
+    def get_inner_volume(self, solutions: bool = True) -> tuple:
+        """Extract the inner volume of the 4D data, excluding boundary points.
+        
+        This method extracts all points that are not on the domain boundaries,
+        effectively creating a volume that excludes the outermost layers in all dimensions.
+        
+        Parameters
+        ----------
+        solutions : bool, optional
+            Whether to include solution variables, by default True
+            
+        Returns
+        -------
+        tuple
+            If solutions is True, returns a tuple of (coords_dict, solutions_dict)
+            If solutions is False, returns coords_dict
+        """
 
         with self.read_data_fn(self.root_dir) as ds:
             inner_volume_ds = ds.isel(pressure_level=slice(1, -1), latitude=slice(1, -1), longitude=slice(1, -1))
@@ -219,9 +310,23 @@ class ERA5MultiData():
 
             return inner_volume_coords
 
-    def get_initial_surface(self, solutions=True):
-        """ corresponds to getting the initial surface, i.e. the first time step
-        since i am on a global scale i only need the base and top of atmosphere"""
+    def get_initial_surface(self, solutions: bool = True) -> tuple:
+        """Extract the initial time step surface data (first time step).
+        
+        This method extracts data for the first time step, including both the surface
+        (bottom) and top of atmosphere (top pressure level) for the initial conditions.
+        
+        Parameters
+        ----------
+        solutions : bool, optional
+            Whether to include solution variables, by default True
+            
+        Returns
+        -------
+        tuple
+            If solutions is True, returns a tuple of (coords_dict, solutions_dict)
+            If solutions is False, returns coords_dict
+        """
 
         with self.read_data_fn(self.root_dir) as ds:
             base = ds.isel(valid_time=0, pressure_level=0)
