@@ -262,6 +262,8 @@ class SphericalGridEmbedding(nn.Module):
         lat, lon = x[:, 0], x[:, 1]
 
         # Calculate the transformed values for latitude and longitude
+        lat = torch.pi/2 * lat # makes lat in [-pi/2, pi/2]
+        lon = torch.pi * lon # makes lon in [-pi, pi]
         lat_transform = lat.unsqueeze(-1) * self.beta[0]
         lon_transform = lon.unsqueeze(-1) * self.beta[1]
 
@@ -329,6 +331,8 @@ class SphericalCartesianEmbedding(nn.Module):
         lat, lon = x[:, 0], x[:, 1]
 
         # Apply the beta parameter to the latitude and longitude
+        lat = torch.pi/2 * lat # makes lat in [-pi/2, pi/2]
+        lon = torch.pi * lon # makes lon in [-pi, pi]
         lat_transform = lat.unsqueeze(-1) * self.beta[0]
         lon_transform = lon.unsqueeze(-1) * self.beta[1]
 
@@ -416,6 +420,8 @@ class SphericalMultiScaleEmbedding(nn.Module):
         lat, lon = x[:, 0], x[:, 1]
 
         # Calculate the transformed values for latitude and longitude
+        lat = torch.pi/2 * lat # makes lat in [-pi/2, pi/2]
+        lon = torch.pi * lon # makes lon in [-pi, pi]
         lat_transform = lat.unsqueeze(-1) * self.beta[0]
         lon_transform = lon.unsqueeze(-1) * self.beta[1]
 
@@ -490,6 +496,8 @@ class DoubleFourierSphericalEmbedding(nn.Module):
         lat, lon = x[:, 0], x[:, 1]
 
         # scale latitude and longitude coordinates
+        lat = torch.pi/2 * lat # makes lat in [-pi/2, pi/2]
+        lon = torch.pi * lon # makes lon in [-pi, pi]
         lat_scaled = lat.unsqueeze(-1) * self.beta_lat
         lon_scaled = lon.unsqueeze(-1) * self.beta_lon
 
@@ -578,6 +586,8 @@ class SphericalCartesianPlusEmbedding(nn.Module):
         lat, lon = x[:, 0], x[:, 1]
 
         # Apply the beta parameter to the latitude and longitude
+        lat = torch.pi/2 * lat # makes lat in [-pi/2, pi/2]
+        lon = torch.pi * lon # makes lon in [-pi, pi]
         lat_transform = lat.unsqueeze(-1) * self.beta[0]
         lon_transform = lon.unsqueeze(-1) * self.beta[1]
 
@@ -662,6 +672,8 @@ class SphericalMultiScalePlusEmbedding(nn.Module):
         lat, lon = x[:, 0], x[:, 1]
 
         # Calculate the transformed values for latitude and longitude
+        lat = torch.pi/2 * lat # makes lat in [-pi/2, pi/2]
+        lon = torch.pi * lon # makes lon in [-pi, pi]
         lat_transform = lat.unsqueeze(-1) * self.beta[0]
         lon_transform = lon.unsqueeze(-1) * self.beta[1]
 
