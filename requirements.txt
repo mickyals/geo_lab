@@ -4,6 +4,7 @@ netcdf4
 zarr
 numcodecs[pcodec]==0.15.1
 dask
+jupyter
 
 
 # --------- pytorch --------- #
