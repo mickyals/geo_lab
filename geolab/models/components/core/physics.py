@@ -36,7 +36,7 @@ def troposphere_pde_residual(inputs, outputs, mass_balance = True):
     # (coriolis_params["f_0"] + coriolis_params["beta"] * inputs['latitude'])
 
     if mass_balance:
-        mass_continuity = grads["u_x"] + w * grads["v_y"] + grads["z_p"]
+        mass_continuity = grads["u_x"] + w * grads["v_y"] + grads["z_p"] # mass continuity equation of the atmosphere
 
         return navier_stokes_longitudinal, navier_stokes_latitudinal, mass_continuity
 
