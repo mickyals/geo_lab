@@ -1,10 +1,15 @@
+"""
+TroposphereDataModule with collocation point sampling for PINN training.
+"""
+
 from typing import Any, Dict, Optional, Tuple, List
 from pathlib import Path
 
 import numpy as np
 import torch
 from lightning import LightningDataModule
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
+from pyDOE import lhs
 
 from geolab.data.components.coordinate_data.mesh import ERA5MultiData
 from geolab.data.components.coordinate_data.troposphere_dataset import TroposphereDataset
@@ -12,6 +17,14 @@ import xarray as xr
 
 
 class TroposphereDataModule(LightningDataModule):
+    """LightningDataModule for troposphere data with collocation point sampling.
+    
+    This datamodule handles:
+    - Loading and preprocessing ERA5 troposphere data
+    - Splitting data into train/val/test sets
+    - Creating dataloaders with proper batching
+    - Generating collocation points for PINN training
+    """
 
     def __init__(
             self,
@@ -37,7 +50,6 @@ class TroposphereDataModule(LightningDataModule):
             test_split: Fraction of data to use for testing
             num_workers: Number of workers for the dataloaders
             pin_memory: Whether to pin memory for the dataloaders
-            seed: Random seed for reproducibility
         """
         super().__init__()
         self.save_hyperparameters(ignore=["read_data_fn"])
@@ -63,11 +75,10 @@ class TroposphereDataModule(LightningDataModule):
 
         This method is called only from a single GPU. Do not use it to assign state (self.x = y).
         """
-        # You can add data downloading logic here if needed
         pass
 
     def setup(self, stage: Optional[str] = None):
-        """Load data. Set variables: `self.train_dataset`, `self.val_dataset`, [self.test_dataset](cci:1://file:///C:/Users/micke/OneDrive%20-%20University%20of%20Toronto/geo_lab/tests/test_era5_vertical_velocity.py:18:0-55:13)."""
+        """Load data and create datasets."""
         # Initialize ERA5 data
         self.era5_data = ERA5MultiData(
             root_dir=str(self.root_dir),
@@ -114,6 +125,35 @@ class TroposphereDataModule(LightningDataModule):
             solution_vars=self.solution_vars,
             indices=test_idx
         )
+
+    def get_collocation_batch(self, n_samples: int) -> Dict[str, torch.Tensor]:
+        """Generate collocation points for PINN training using Latin Hypercube Sampling.
+        
+        Returns normalized coordinates in the same format as the dataset:
+        - longitude, latitude, pressure_level: [-1, 1]
+        - time: [0, 1]
+        
+        Args:
+            n_samples: Number of collocation points to generate
+            
+        Returns:
+            Dictionary with keys ['longitude', 'latitude', 'pressure_level', 'time']
+            and tensor values of shape [n_samples]
+        """
+        # Sample in [0,1]^4 using Latin Hypercube Sampling
+        samples = lhs(4, samples=n_samples)
+        
+        # Map to normalized space matching dataset normalization
+        # Spatial coordinates: [0,1] -> [-1,1]
+        # Time: keep in [0,1]
+        coords = {
+            'longitude': torch.tensor(samples[:, 0] * 2 - 1, dtype=torch.float32),
+            'latitude': torch.tensor(samples[:, 1] * 2 - 1, dtype=torch.float32),
+            'pressure_level': torch.tensor(samples[:, 2] * 2 - 1, dtype=torch.float32),
+            'time': torch.tensor(samples[:, 3], dtype=torch.float32)
+        }
+        
+        return coords
 
     def train_dataloader(self):
         return DataLoader(
