@@ -19,6 +19,7 @@ class TroposphereDataModule(LightningDataModule):
             read_data_fn=xr.open_dataset,
             solution_vars: List[str] = ["u", "v", "w", "z"],
             prc_points: float = 0.3,
+            prc_virtual: float = 0.1,
             batch_size: int = 32,
             val_split: float = 0.15,
             test_split: float = 0.15,
@@ -32,6 +33,7 @@ class TroposphereDataModule(LightningDataModule):
             read_data_fn: Function to read the data files (default: xr.open_dataset)
             solution_vars: List of variable names to include in the dataset
             prc_points: Percentage of total points to use (0.0 to 1.0)
+            prc_virtual: Percentage of virtual points to use (0.0 to 1.0) based on the real points so 0.1 means 10% of the real points
             batch_size: Batch size for the dataloaders
             val_split: Fraction of data to use for validation
             test_split: Fraction of data to use for testing
@@ -46,6 +48,7 @@ class TroposphereDataModule(LightningDataModule):
         self.read_data_fn = read_data_fn
         self.solution_vars = solution_vars
         self.prc_points = prc_points
+        self.prc_virtual = prc_virtual
         self.batch_size = batch_size
         self.val_split = val_split
         self.test_split = test_split
@@ -76,7 +79,9 @@ class TroposphereDataModule(LightningDataModule):
         )
 
         # Get indices for all available points
-        num_points = self.era5_data.num_points
+        real_num_points = self.era5_data.num_points
+        virtual_num_points = int(self.prc_virtual * real_num_points)
+        num_points = real_num_points + virtual_num_points
         all_idx = np.arange(num_points)
         num_samples = int(self.prc_points * num_points)
 

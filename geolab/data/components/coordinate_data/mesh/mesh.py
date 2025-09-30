@@ -383,48 +383,46 @@ class ERA5MultiData:
 
             return initial_surface_coords
 
-    def get_collocation_points(self, prc_points: float, use_lhs: bool = True, dynamic: bool = True) -> Union[
-        Dict[str, List[Dict[str, np.ndarray]]], Tuple[Dict[str, np.ndarray], int]]:
-        """Generate collocation points within the domain bounds and optionally include real data points.
+    def get_collocation_points(self, prc_points: float, use_lhs: bool = True, dynamic: bool = True) -> Dict[str, np.ndarray]:
+        """Generate collocation points within the domain bounds using Latin Hypercube Sampling.
 
         Parameters
         ----------
-        prc_points : float
-            Percentage of total points to sample as collocation points (0.0 to 1.0)
+        num_samples : int
+            Number of collocation points to generate
         use_lhs : bool, optional
-            Whether to use Latin Hypercube Sampling (True) or uniform random sampling (False)
+            Whether to use Latin Hypercube Sampling (True) or uniform random sampling (False).
+            Default is True.
         dynamic : bool, optional
-            If True, returns both real data points and collocation points.
-            If False, returns only collocation points.
+        If True, returns both real data points and collocation points.
+        If False, returns only collocation points.
 
-        Returns
-        -------
-        Union[Dict[str, List[Dict[str, np.ndarray]]], Tuple[Dict[str, np.ndarray], int]]
-            - If dynamic=True: Dictionary with 'real' and 'virtual' keys containing real data and collocation points
-            - If dynamic=False: Tuple of (collocation_points_dict, num_samples)
+    Returns
+    -------
+    Union[Dict[str, List[Dict[str, np.ndarray]]], Tuple[Dict[str, np.ndarray], int]]
+        - If dynamic=True: Dictionary with 'real' and 'virtual' keys containing real data and collocation points
+        - If dynamic=False: Tuple of (collocation_points_dict, num_samples)
         """
-        # Define coordinate names based on the dataset
+        # Get lower and upper bounds for all coordinates
         coord_names = ['valid_time', 'pressure_level', 'latitude', 'longitude']
         lb = np.array([self.lower_bounds['coords'][dim] for dim in coord_names])
         ub = np.array([self.upper_bounds['coords'][dim] for dim in coord_names])
+        num_samples = int(prc_points * self.total_points) # so we can see how many virtual points we are using
 
-        # Calculate number of samples based on percentage
-        num_samples = int(prc_points * self.total_points)
-
-        # Generate collocation points using either LHS or uniform random sampling
         if use_lhs:
-            sampler = qmc.LatinHypercube(d=len(coord_names))
-            points = sampler.random(n=num_samples)
-            points = qmc.scale(points, lb, ub)
+            # Generate points using Latin Hypercube Sampling in [0,1]^d
+            points_01 = lhs(len(coord_names), samples=num_samples)
+            # Scale to [lb, ub]
+            points = lb + (ub - lb) * points_01
         else:
-            points = np.random.uniform(low=lb, high=ub, size=(num_samples, len(coord_names)))
+            # Simple random sampling
+            points = np.random.uniform(lb, ub, size=(num_samples, len(coord_names)))
 
         # Convert to dictionary with coordinate names as keys
         collocation_points = {name: points[:, i] for i, name in enumerate(coord_names)}
-
         if dynamic:
             with self.read_data_fn(self.root_dir) as ds:
-                # Get all coordinate points
+                # Create meshgrid of all coordinate points
                 coords_array = [ds[coord].values for coord in ds.coords]
                 mesh = np.meshgrid(*coords_array, indexing='ij')
 
@@ -434,16 +432,11 @@ class ERA5MultiData:
                 # Create dictionary of flattened solution variables
                 solutions = {var: ds[var].values.ravel() for var in self.solution_vars}
 
-                # Update total number of points to include both real and virtual points
-                self.num_points = ds[self.solution_vars[0]].size + num_samples
+                self.num_points = len(ds[self.solution_vars[0]]) + num_samples
 
-                return {
-                    'real': [coords, solutions],
-                    'virtual': [collocation_points]
-                }
+                return {'real': [coords, solutions], 'virtual': collocation_points}
 
         return collocation_points
-
 
 
     def get_full_data(self):
