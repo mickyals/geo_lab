@@ -33,10 +33,9 @@ class BaseLayer(nn.Module):
 
 
 
-class ResidualBlock(BaseLayer):
+class ResidualBlock(nn.Module):
     """
-    a block is defined as the number of layer between x and f(x) + x
-
+following the resnet like block structure of Neural implicit flow and H-siren
     """
     def __init__(self, num_features, residual_weight,
                  activation, initialization,  initialization_kwargs, activation_kwargs):
@@ -57,24 +56,17 @@ class ResidualBlock(BaseLayer):
         identity =  x
         first = self.linear1(x)
         act1 = self.activation(first)
-        second = self.residual_weight * self.linear2(act1)
+        second = self.linear2(act1)
         if self.residual_weight is not None:
-            residual = ((1 - self.residual_weight) * identity) + (self.residual_weight * second )
-            return self.activation(residual)
+            return ((1 - self.residual_weight) * self.activation(second)) + (self.residual_weight * identity) # typically 0.5f(x) + 0.5x to the next layer or block
+
         else:
-            residual = identity + second
-            return self.activation(residual)
+            return self.activation(second) + identity
 
 
-
-
-
-class DenseBlock(BaseLayer):
-    def __init__(self, num_features, num_layers, activation,
-                 initialization, initialization_kwargs, activation_kwargs):
-        pass
-
-class BaseParametrizationLayer(BaseLayer):
+class BaseParametrizationLayer(nn.Module):
     def __init__(self, in_features, out_features, weights_and_biases, activation,
                  initialization, initialization_kwargs, activation_kwargs):
+
+        """ essentially this will be a layer that takes in_features, out_features and the weights and biases for the layer"""
         pass

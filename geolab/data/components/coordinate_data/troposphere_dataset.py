@@ -11,10 +11,13 @@ class TroposphereDataset(Dataset):
                  root_dir,
                  read_data_fn,
                  solution_vars,
-                 indices
+                 indices,
+                 prc_collocation_points,
+                 use_lhs,
+                 dynamic,
                  ):
         era5_data = ERA5MultiData(root_dir, read_data_fn, solution_vars)
-        input_data, output_data = era5_data.get_full_data()
+        input_data, output_data = era5_data.get_collocation_points(prc_collocation_points, use_lhs, dynamic=dynamic)
 
         # Use provided indices or default to all
         if indices is None:
