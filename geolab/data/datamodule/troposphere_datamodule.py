@@ -47,7 +47,7 @@ class TroposphereDataModule(LightningDataModule):
         self.root_dir = Path(root_dir)
         self.read_data_fn = read_data_fn
         self.solution_vars = solution_vars
-        self.prc_points = prc_points
+        self.prc_data_points = prc_points
         self.prc_virtual = prc_virtual
         self.batch_size = batch_size
         self.val_split = val_split
@@ -83,7 +83,7 @@ class TroposphereDataModule(LightningDataModule):
         virtual_num_points = int(self.prc_virtual * real_num_points)
         num_points = real_num_points + virtual_num_points
         all_idx = np.arange(num_points)
-        num_samples = int(self.prc_points * num_points)
+        num_samples = int(self.prc_data_points * num_points) + virtual_num_points
 
         # Sample indices
         rng = np.random.default_rng()

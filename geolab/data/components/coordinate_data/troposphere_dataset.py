@@ -17,14 +17,11 @@ class TroposphereDataset(Dataset):
                  dynamic,
                  ):
         era5_data = ERA5MultiData(root_dir, read_data_fn, solution_vars)
-        training_points = era5_data.get_collocation_points(prc_collocation_points, use_lhs, dynamic=dynamic)
-        real_size = len(training_points['real'][1][solution_vars[0]])
-        virtual_size = len(training_points['virtual']['valid_time']) if dynamic else 0
+        training_points, points_count = era5_data.get_collocation_points(prc_collocation_points, use_lhs, dynamic=dynamic)
 
         # Use provided indices or default to all
         if indices is None:
-            data_length = real_size + virtual_size
-            indices = np.arange(data_length)
+            indices = np.arange(points_count)
 
         self.solution_vars = solution_vars
         self.lower_bounds = era5_data.get_lower_bounds()

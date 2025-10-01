@@ -432,9 +432,9 @@ class ERA5MultiData:
                 # Create dictionary of flattened solution variables
                 solutions = {var: ds[var].values.ravel() for var in self.solution_vars}
 
-                self.num_points = len(ds[self.solution_vars[0]]) + num_samples
+                total_points = len(ds[self.solution_vars[0]]) + num_samples
 
-                return {'real': [coords, solutions], 'virtual': collocation_points}
+                return {'real': [coords, solutions], 'virtual': collocation_points}, total_points
 
         return collocation_points
 
