@@ -10,15 +10,80 @@ from geolab.models.components.core.initializations import get_initializer
 from geolab.models.components.core.activations import get_activation
 
 
-
 class NIF(nn.Module):
-    def __init__(self):
-        self.encoder = NIF_Encoder()
-        self.reparameterizer = NIF_Reparameterizer()
-        self.decoder = NIF_Decoder()
+    def __init__(
+            self,
+            # Encoder parameters
+            encoder_in_features: int,
+            encoder_n_hidden_layers: int,
+            encoder_layer_width: int,
+            encoder_activation_name: str,
+            encoder_activation_kwargs: Dict[str, Any],
+            encoder_initializer_name: str,
+            encoder_initializer_kwargs: Dict[str, Any],
+            encoder_positional_encoding_name: Optional[str],
+            encoder_positional_encoding_kwargs: Optional[Dict[str, Any]],
 
-    def forward(self, x):
+            # Decoder parameters
+            decoder_in_features: int,
+            decoder_hidden_width: int,
+            decoder_n_hidden_layers: int,
+            decoder_out_features: int,
+            decoder_activation_name: str,
+            decoder_activation_kwargs: Dict[str, Any],
+            decoder_positional_encoding_name: Optional[str] = None,
+            decoder_positional_encoding_kwargs: Optional[Dict[str, Any]] = None,
 
+            # Reparameterizer parameters
+            deterministic: bool = True,
+            decoder_initializer_name: Optional[str] = None,
+            decoder_initializer_kwargs: Optional[Dict[str, Any]] = None,
+    ):
+        super().__init__()
+
+        # Calculate total parameters needed for the decoder
+        out_weights = (decoder_in_features * decoder_hidden_width) + \
+                      (decoder_hidden_width ** 2 * decoder_n_hidden_layers) + \
+                      (decoder_hidden_width * decoder_out_features)
+        out_biases = decoder_hidden_width + \
+                     (decoder_n_hidden_layers * decoder_hidden_width) + \
+                     decoder_out_features
+        out_weights_and_biases = out_weights + out_biases
+
+        # Initialize components
+        self.encoder = NIF_Encoder(
+            in_features=encoder_in_features,
+            n_hidden_layers=encoder_n_hidden_layers,
+            layer_width=encoder_layer_width,
+            activation_name=encoder_activation_name,
+            activation_kwargs=encoder_activation_kwargs,
+            initializer_name=encoder_initializer_name,
+            initializer_kwargs=encoder_initializer_kwargs,
+            positional_encoding_name=encoder_positional_encoding_name,
+            positional_encoding_kwargs=encoder_positional_encoding_kwargs,
+        )
+
+        self.reparameterizer = NIF_Reparameterizer(
+            hidden_width=encoder_layer_width,  # Assuming this matches encoder output
+            out_weights=out_weights_and_biases,
+            deterministic=deterministic,
+            initializer_name=decoder_initializer_name or encoder_initializer_name,
+            initializer_kwargs=decoder_initializer_kwargs or {}
+        )
+
+        self.decoder = NIF_Decoder(
+            in_features=decoder_in_features,
+            out_features=decoder_out_features,
+            hidden_width=decoder_hidden_width,
+            hidden_layers=decoder_n_hidden_layers,
+            activation_name=decoder_activation_name,
+            activation_kwargs=decoder_activation_kwargs,
+            positional_encoding_name=decoder_positional_encoding_name,
+            positional_encoding_kwargs=decoder_positional_encoding_kwargs or {}
+        )
+
+    def forward(self, x: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
+        # Process input through the network
         encoder = self.encoder(x['valid_time'])
         weights = self.reparameterizer(encoder)
         decoder = self.decoder(weights, x['latitude'], x['longitude'], x['pressure_level'])
@@ -53,7 +118,6 @@ class NIF_Encoder(nn.Module):
         in_features: int,
         n_hidden_layers: int,
         layer_width: int,
-        out_weights: int,
         activation_name: str,
         activation_kwargs: Dict[str, Any],
         initializer_name: str,
@@ -67,7 +131,7 @@ class NIF_Encoder(nn.Module):
         self.in_features = in_features
         self.n_layers = n_hidden_layers
         self.layer_width = layer_width
-        self.out_weights = out_weights
+
         
         # Store activation and initialization configurations
         self.activation_name = activation_name
@@ -245,7 +309,129 @@ class NIF_Reparameterizer(nn.Module):
 
 
 class NIF_Decoder(nn.Module):
-    pass
+    def __init__(self, in_features, out_features, hidden_width, hidden_layers,
+                 activation_name, activation_kwargs, positional_encoding_name,
+                 positional_encoding_kwargs):
+        super().__init__()
+
+
+        self.in_features = in_features
+        self.out_features = out_features
+        self.hidden_width = hidden_width
+        self.n_layers = hidden_layers
+        self.activation_name = activation_name
+        self.activation_kwargs = activation_kwargs
+        # Set up positional encoding if specified
+        self.positional_encoding = None
+        if positional_encoding_name:
+            self.positional_encoding = get_embedding(
+                embedding_name=positional_encoding_name,
+                in_features=in_features,
+                **(positional_encoding_kwargs or {})
+            )
+            in_features = self.positional_encoding.out_features
+        self.input_weights = (in_features * hidden_width)
+        self.hidden_weights = (hidden_width * hidden_width) * hidden_layers
+        self.output_weights = (hidden_width * out_features)
+        self.total_weights = self.input_weights + self.hidden_weights + self.output_weights
+        self.input_biases = hidden_width
+        self.hidden_biases = hidden_width * hidden_layers
+        self.output_biases = out_features
+        self.total_biases = self.input_biases + self.hidden_biases + self.output_biases
+
+        self.net = self._build_network()
+
+    def _build_network(self):
+        layers = nn.ModuleList()
+
+        # Input layer
+        input_features = self.positional_encoding.out_features if self.positional_encoding else self.in_features
+        layers.add_module(
+            "input_layer",
+            BaseParametrizationLayer(
+                in_features=input_features,
+                out_features=self.hidden_width,
+                is_last=False,
+                activation=self.activation_name,
+                activation_kwargs= {**self.activation_kwargs, "in_features": input_features, "is_first": True}
+            )
+        )
+
+        for i in range(self.n_layers):
+            layers.add_module(
+                f"hidden_layer {i+1}",
+                BaseParametrizationLayer(
+                    in_features=self.hidden_width,
+                    out_features=self.hidden_width,
+                    is_last=False,
+                    activation_name=self.activation_name,
+                    activation_kwargs= {**self.initializer_kwargs, "in_features": self.hidden_width, "is_first": False}
+                )
+            )
+
+        layers.add_module('output_layer',
+                          BaseParametrizationLayer(
+                            in_features=self.hidden_width,
+                            out_features=self.out_features,
+                            is_last=True,
+                            activation_name=self.activation_name,
+                            activation_kwargs= {**self.initializer_kwargs, "in_features": self.hidden_width, "is_first": False}
+                          )
+                        )
+
+        return layers
+
+    def forward(self, x, weights_and_biases):
+        all_weights = weights_and_biases[:, :self.total_weights]
+        all_biases = weights_and_biases[:, self.total_weights:]
+
+        assert all_weights.shape[1] == self.total_weights
+        assert all_biases.shape[1] == self.total_biases
+
+        # Split weights and biases
+        input_weights = all_weights[:, :self.input_weights]
+        input_biases = all_biases[:, :self.input_biases]
+
+        hidden_weights = all_weights[:, self.input_weights:self.input_weights + self.hidden_weights]
+        hidden_biases = all_biases[:, self.input_biases:self.input_biases + self.hidden_biases]
+
+        output_weights = all_weights[:, self.input_weights + self.hidden_weights:]
+        output_biases = all_biases[:, self.input_biases + self.hidden_biases:]
+
+        # Reshape weights and biases for each layer
+        # Input layer
+        input_weights = input_weights.view(-1, self.hidden_width, self.in_features)  # [batch, hidden, in]
+        input_biases = input_biases.unsqueeze(-1)  # [batch, hidden, 1]
+
+        # Hidden layers
+        hidden_weights = hidden_weights.view(-1, self.n_layers, self.hidden_width,
+                                             self.hidden_width)  # [batch, n_layers, hidden, hidden]
+        hidden_biases = hidden_biases.view(-1, self.n_layers, self.hidden_width)  # [batch, n_layers, hidden]
+
+        # Output layer
+        output_weights = output_weights.view(-1, self.out_features, self.hidden_width)  # [batch, out, hidden]
+        output_biases = output_biases.unsqueeze(-1)  # [batch, out, 1]
+
+        # Process input through the network
+        # Input layer
+        x = self.net[0](x, (input_weights, input_biases))
+
+        # Hidden layers
+        for i in range(self.n_layers):
+            h_w = hidden_weights[:, i]  # [batch, hidden, hidden]
+            h_b = hidden_biases[:, i].unsqueeze(-1)  # [batch, hidden, 1]
+            x = self.net[i + 1](x, (h_w, h_b))  # +1 because input layer is at index 0
+
+        # Output layer
+        x = self.net[-1](x, (output_weights, output_biases))
+
+        return x
+
+
+
+
+
+
 
 
 
