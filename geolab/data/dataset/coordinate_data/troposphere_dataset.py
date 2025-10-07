@@ -29,8 +29,13 @@ class TroposphereDataset(Dataset):
         self.dataset_coords = era5_data.dataset_coords
 
         # Store only selected data
-        self.input_data = {k: v[indices] for k, v in input_data.items()}
-        self.output_data = {k: v[indices] for k, v in output_data.items()}
+        self.input_data = {
+            'longitude': training_points['longitude'][indices],
+            'latitude': training_points['latitude'][indices],
+            'pressure_level': training_points['pressure_level'][indices],
+            'valid_time': training_points['valid_time'][indices]
+        }
+        self.output_data = {var: training_points[var][indices] for var in solution_vars}
         self.idx = indices
 
 
