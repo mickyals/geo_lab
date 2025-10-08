@@ -6,8 +6,7 @@ import torch
 from lightning import LightningDataModule
 from torch.utils.data import DataLoader, random_split
 
-from geolab.data.components.coordinate_data.mesh import ERA5MultiData
-from geolab.data.components.coordinate_data.troposphere_dataset import TroposphereDataset
+from geolab.data.dataset import ERA5MultiData, ERA5MultiDataset
 import xarray as xr
 
 
@@ -15,21 +14,28 @@ class TroposphereDataModule(LightningDataModule):
 
     def __init__(
             self,
-            root_dir: str,
+            data_dir: str,
             read_data_fn=xr.open_dataset,
             solution_vars: List[str] = ["u", "v", "w", "z"],
-            prc_points: float = 0.3,
-            prc_virtual: float = 0.1,
+            time_idx_range: List[int] = None,
+            pressure_idx_range: List[int] = None,
+            latitude_idx_range: List[int] = None,
+            longitude_idx_range: List[int] = None,
+            include_virtual=False,
+            indexing = 'ij',
+            num_virtual = 20000,
+            use_lhs = True,
             batch_size: int = 32,
             val_split: float = 0.15,
             test_split: float = 0.15,
+            scale: bool = True,
             num_workers: int = 4,
             pin_memory: bool = True,
     ):
         """Initialize a TroposphereDataModule.
 
         Args:
-            root_dir: Path to the directory containing the data files
+            data_dir: Path to the directory containing the data files
             read_data_fn: Function to read the data files (default: xr.open_dataset)
             solution_vars: List of variable names to include in the dataset
             prc_points: Percentage of total points to use (0.0 to 1.0)
@@ -44,14 +50,21 @@ class TroposphereDataModule(LightningDataModule):
         super().__init__()
         self.save_hyperparameters(ignore=["read_data_fn"])
 
-        self.root_dir = Path(root_dir)
+        self.data_dir = data_dir
         self.read_data_fn = read_data_fn
         self.solution_vars = solution_vars
-        self.prc_data_points = prc_points
-        self.prc_virtual = prc_virtual
+        self.time_idx_range = time_idx_range if time_idx_range is not None else [0, 1]
+        self.pressure_idx_range = pressure_idx_range if pressure_idx_range is not None else None
+        self.latitude_idx_range = latitude_idx_range if latitude_idx_range is not None else None
+        self.longitude_idx_range = longitude_idx_range if longitude_idx_range is not None else None
+        self.include_virtual = include_virtual
+        self.indexing = indexing
+        self.num_virtual = num_virtual
+        self.use_lhs = use_lhs
         self.batch_size = batch_size
-        self.val_split = val_split
         self.test_split = test_split
+        self.scale = scale
+        self.val_split = val_split
         self.num_workers = num_workers
         self.pin_memory = pin_memory
 
@@ -72,52 +85,72 @@ class TroposphereDataModule(LightningDataModule):
     def setup(self, stage: Optional[str] = None):
         """Load data. Set variables: `self.train_dataset`, `self.val_dataset`, [self.test_dataset](cci:1://file:///C:/Users/micke/OneDrive%20-%20University%20of%20Toronto/geo_lab/tests/test_era5_vertical_velocity.py:18:0-55:13)."""
         # Initialize ERA5 data
-        self.era5_data = ERA5MultiData(
-            root_dir=str(self.root_dir),
+        self.era5 = ERA5MultiData(
+            data_dir=str(self.data_dir),
             read_data_fn=self.read_data_fn,
-            solution_vars=self.solution_vars
+            variables=self.solution_vars
         )
 
-        # Get indices for all available points
-        real_num_points = self.era5_data.num_points
-        virtual_num_points = int(self.prc_virtual * real_num_points)
-        num_points = real_num_points + virtual_num_points
-        all_idx = np.arange(num_points)
-        num_samples = int(self.prc_data_points * num_points) + virtual_num_points
-
-        # Sample indices
-        rng = np.random.default_rng()
-        sampled_idx = rng.choice(all_idx, min(num_samples, num_points), replace=False)
-
-        # Split indices
-        num_val = int(self.val_split * len(sampled_idx))
-        num_test = int(self.test_split * len(sampled_idx))
-        num_train = len(sampled_idx) - num_val - num_test
-
-        train_idx = sampled_idx[:num_train]
-        val_idx = sampled_idx[num_train:num_train + num_val]
-        test_idx = sampled_idx[num_train + num_val:]
-
-        # Create datasets
-        self.train_dataset = TroposphereDataset(
-            root_dir=str(self.root_dir),
-            read_data_fn=self.read_data_fn,
-            solution_vars=self.solution_vars,
-            indices=train_idx
+        data, statistics = self.era5.run(
+            self.time_idx_range, 
+            self.pressure_idx_range, 
+            self.latitude_idx_range,
+            self.longitude_idx_range, 
+            indexing=self.indexing, 
+            num_samples=self.num_virtual,
+            include_virtual=self.include_virtual, 
+            use_lhs=self.use_lhs
         )
 
-        self.val_dataset = TroposphereDataset(
-            root_dir=str(self.root_dir),
-            read_data_fn=self.read_data_fn,
-            solution_vars=self.solution_vars,
-            indices=val_idx
+        # Create shuffled indices for all data points
+        self.rng = np.random.default_rng()  # Fixed seed for reproducibility
+        total_points = data['count'][0]
+        shuffled_idx = self.rng.permutation(total_points)
+        
+        # Shuffle all arrays in the data dictionary
+        for k, v in data['data'].items():
+            v[:] = v[shuffled_idx]
+        
+        # Calculate split sizes
+        test_size = int(total_points * self.test_split)
+        val_size = int(total_points * self.val_split)
+        train_size = total_points - val_size - test_size
+        
+        # Create index arrays for each split
+        train_idx = np.arange(0, train_size)
+        val_idx = np.arange(train_size, train_size + val_size)
+        test_idx = np.arange(train_size + val_size, total_points)
+
+
+
+
+        
+        # Create datasets with the shuffled data and corresponding indices
+        self.train_dataset = ERA5MultiDataset(
+            data=data,
+            statistics=statistics,
+            indices=train_idx,
+            include_virtual=self.include_virtual,
+            variables=self.solution_vars,
+            scale=self.scale
         )
 
-        self.test_dataset = TroposphereDataset(
-            root_dir=str(self.root_dir),
-            read_data_fn=self.read_data_fn,
-            solution_vars=self.solution_vars,
-            indices=test_idx
+        self.val_dataset = ERA5MultiDataset(
+            data=data,
+            statistics=statistics,
+            indices=val_idx,
+            include_virtual=self.include_virtual,
+            variables=self.solution_vars,
+            scale=self.scale
+        )
+
+        self.test_dataset = ERA5MultiDataset(
+            data=data,
+            statistics=statistics,
+            indices=test_idx,
+            include_virtual=self.include_virtual,
+            variables=self.solution_vars,
+            scale=self.scale
         )
 
     def train_dataloader(self):
