@@ -56,8 +56,7 @@ class ERA5LightningModule(LightningModule):
 
         # this line allows to access init params with 'self.hparams' attribute
         # also ensures init params will be stored in ckpt
-        self.save_hyperparameters(logger=False)
-
+        self.save_hyperparameters()
 
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -67,12 +66,10 @@ class ERA5LightningModule(LightningModule):
         :return: A tensor of logits.
         """
 
-
     def on_train_start(self) -> None:
         """Lightning hook that is called when training begins."""
         # by default lightning executes validation step sanity checks before training starts,
         # so it's worth to make sure validation metrics don't store results from these checks
-
 
     def model_step(
         self, batch: Tuple[torch.Tensor, torch.Tensor]
@@ -87,7 +84,6 @@ class ERA5LightningModule(LightningModule):
             - A tensor of target labels.
         """
 
-
     def training_step(
         self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
@@ -98,7 +94,6 @@ class ERA5LightningModule(LightningModule):
         :param batch_idx: The index of the current batch.
         :return: A tensor of losses between model predictions and targets.
         """
-
 
     def on_train_epoch_end(self) -> None:
         "Lightning hook that is called when a training epoch ends."
@@ -112,10 +107,8 @@ class ERA5LightningModule(LightningModule):
         :param batch_idx: The index of the current batch.
         """
 
-
     def on_validation_epoch_end(self) -> None:
         "Lightning hook that is called when a validation epoch ends."
-
 
     def test_step(self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int) -> None:
         """Perform a single test step on a batch of data from the test set.
@@ -124,7 +117,6 @@ class ERA5LightningModule(LightningModule):
             labels.
         :param batch_idx: The index of the current batch.
         """
-
     def on_test_epoch_end(self) -> None:
         """Lightning hook that is called when a test epoch ends."""
         pass
@@ -139,7 +131,6 @@ class ERA5LightningModule(LightningModule):
         :param stage: Either `"fit"`, `"validate"`, `"test"`, or `"predict"`.
         """
 
-
     def configure_optimizers(self) -> Dict[str, Any]:
         """Choose what optimizers and learning-rate schedulers to use in your optimization.
         Normally you'd need one. But in the case of GANs or similar you might have multiple.
@@ -149,4 +140,3 @@ class ERA5LightningModule(LightningModule):
 
         :return: A dict containing the configured optimizers and learning-rate schedulers to be used for training.
         """
-

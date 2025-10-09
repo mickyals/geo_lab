@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 import math
+from geolab.models.components.position_encoders import FourierFeatures
 
 
 class RealGaborLayer(nn.Module):
@@ -15,7 +16,7 @@ class RealGaborLayer(nn.Module):
         self.freqs = nn.Linear(in_features=in_features, out_features=out_features, bias=bias)
         self.scale = nn.Linear(in_features=in_features, out_features=out_features, bias=bias)
         self.init_freqs_weights()
-        self.init_scale_weights()
+        self.init_scale_weights(init_type)
 
     def init_freqs_weights(self):
         with torch.no_grad():
@@ -42,11 +43,32 @@ class RealGaborLayer(nn.Module):
 
 
 class RealWireNet(nn.Module):
-    def __init__(self, N_in_features, N_out_features, N_hidden_features, N_hidden_layers, omega_0, scale_0, init_type, bias):
+    def __init__(self, N_in_features, N_out_features, N_hidden_features,
+                 N_hidden_layers, omega_0, scale_0, init_type, bias,
+                 position_encoder_type=None, mapping_dim=None, scale=1.0):
 
         super().__init__()
 
-        self.net = self._build_network(N_in_features, N_out_features, N_hidden_features,
+        self.position_encoder_type = position_encoder_type
+
+        # Create position encoder if specified
+        if position_encoder_type is not None:
+            if mapping_dim is None:
+                raise ValueError("mapping_dim must be specified when using position encoder")
+            self.position_encoder = FourierFeatures(
+                input_dimension=N_in_features,
+                mapping_dimension=mapping_dim,
+                scale=scale,
+                type=position_encoder_type,
+                trainable=False
+            )
+            # Update input features for the network
+            network_input_features = mapping_dim
+        else:
+            self.position_encoder = None
+            network_input_features = N_in_features
+
+        self.net = self._build_network(network_input_features, N_out_features, N_hidden_features,
                                        N_hidden_layers, omega_0, scale_0, init_type, bias)
 
 
@@ -72,6 +94,8 @@ class RealWireNet(nn.Module):
         return net
 
     def forward(self, x):
+        if self.position_encoder is not None:
+            x = self.position_encoder(x)
         return self.net(x)
 
 

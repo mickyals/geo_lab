@@ -1,8 +1,10 @@
 import torch
 from torch import nn
+from geolab.models.components.position_encoders import FourierFeatures
 
 
-class FCNLayer(nn.module):
+
+class FCNLayer(nn.Module):
     def __init__(self, in_features, out_features,
                  activation='relu', is_last=False, bias=True, init_type='uniform'):
         super().__init__()
@@ -39,12 +41,32 @@ class FCNLayer(nn.module):
         return wx_b
 
 
-class FCN(nn.module):
-    def __init__(self, in_features, out_features, hidden_features, hidden_layers,
-                 activation='relu', bias=True, init_type='uniform'):
+class FCN(nn.Module):
+    def __init__(self, N_in_features, N_out_features, N_hidden_features, N_hidden_layers,
+                 activation='relu', bias=True, init_type='uniform', position_encoder_type=None,
+                 mapping_dim=None, scale=1.0):
         super().__init__()
 
-        self.net =self._build_network(in_features, out_features, hidden_features, hidden_layers,
+        self.position_encoder_type = position_encoder_type
+
+        # Create position encoder if specified
+        if position_encoder_type is not None:
+            if mapping_dim is None:
+                raise ValueError("mapping_dim must be specified when using position encoder")
+            self.position_encoder = FourierFeatures(
+                input_dimension=N_in_features,
+                mapping_dimension=mapping_dim,
+                scale=scale,
+                type=position_encoder_type,
+                trainable=False
+            )
+            # Update input features for the network
+            network_input_features = mapping_dim
+        else:
+            self.position_encoder = None
+            network_input_features = N_in_features
+
+        self.net = self._build_network(network_input_features, N_out_features, N_hidden_features, N_hidden_layers,
                                       activation, bias, init_type)
 
 
@@ -65,4 +87,6 @@ class FCN(nn.module):
         return net
 
     def forward(self, x):
+        if self.position_encoder is not None:
+            x = self.position_encoder(x)
         return self.net(x)

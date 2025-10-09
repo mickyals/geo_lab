@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 import math
+from geolab.models.components.position_encoders import FourierFeatures
 
 
 
@@ -43,11 +44,33 @@ class SirenNet(nn.Module):
                  N_hidden_features,
                  N_hidden_layers,
                  first_omega=30,
-                 hidden_omega=30):
+                 hidden_omega=30,
+                 position_encoder_type=None,
+                 mapping_dim=None,
+                 scale=1.0):
 
         super().__init__()
 
-        self.net = self._build_network(N_in_features,N_out_features,
+        self.position_encoder_type = position_encoder_type
+
+        # Create position encoder if specified
+        if position_encoder_type is not None:
+            if mapping_dim is None:
+                raise ValueError("mapping_dim must be specified when using position encoder")
+            self.position_encoder = FourierFeatures(
+                input_dimension=N_in_features,
+                mapping_dimension=mapping_dim,
+                scale=scale,
+                type=position_encoder_type,
+                trainable=False
+            )
+            # Update input features for the network
+            network_input_features = mapping_dim
+        else:
+            self.position_encoder = None
+            network_input_features = N_in_features
+
+        self.net = self._build_network(network_input_features,N_out_features,
                                          N_hidden_features,N_hidden_layers,
                                          first_omega, hidden_omega)
 
@@ -70,4 +93,6 @@ class SirenNet(nn.Module):
 
 
     def forward(self, x):
+        if self.position_encoder is not None:
+            x = self.position_encoder(x)
         return self.net(x)
