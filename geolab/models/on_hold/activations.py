@@ -114,22 +114,12 @@ class sine_activation(nn.Module):
         """
         super().__init__()
         self.omega = omega
-        """
-        The frequency parameter of the sine function.
-        """
+
 
     def forward(self, x):
         """
         Apply the sine activation function to the input tensor.
-
-        Args:
-            x (torch.Tensor): The input tensor.
-
-        Returns:
-            torch.Tensor: The tensor with the sine activation applied.
         """
-        # Apply the sine activation function to the input tensor.
-        # The frequency parameter is self.omega.
         return torch.sin(self.omega * x)
 
 #===================================================================
