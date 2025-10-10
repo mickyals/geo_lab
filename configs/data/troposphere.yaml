@@ -1,10 +1,16 @@
 _target_: geolab.data.datamodule.troposphere_datamodule.TroposphereDataModule
-root_dir: ${paths.root_dir}
-read_data_fn: xr.open_dataset
-solution_vars: ["u", "v", "w", "z"]
-prc_points: 0.3
-batch_size: 10000
-val_split: 0.2
-test_split: 0.2
-num_workers: 0
-pin_memory: False
+data_dir: ${paths.data_dir}
+solution_vars: ["t", "w", "u", "z", "v"]
+time_idx_range: [0,2]  # All time steps
+pressure_idx_range: [0,1]  # All pressure levels
+latitude_idx_range: null  # All latitudes
+longitude_idx_range: null  # All longitudes
+test_split: 0.15
+val_split: 0.15
+num_virtual: 100000  # Number of virtual points
+include_virtual: true
+use_lhs: true  # Use Latin Hypercube Sampling
+pi_scale: true  # Scale coordinates
+batch_size: 20000
+num_workers: 0  # Required for Windows/Jupyter
+pin_memory: true

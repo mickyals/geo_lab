@@ -67,8 +67,27 @@ def compute_troposphere_gradients(inputs_tensor, model_outputs):
     # Then extract the relevant column for each coordinate
     
     # Gradient of u with respect to all inputs
+    print(f'inputs_tensor: {inputs_tensor.shape}')
+    print(f'u_pred: {u_pred.shape}')
+    print(f'v_pred: {v_pred.shape}')
+    print(f'w_pred: {w_pred.shape}')
+    print(f'z_pred: {z_pred.shape}')
+
+    print('Broke here')
+    grads = torch.autograd.grad(
+        u_pred,
+        inputs_tensor,
+        grad_outputs=torch.ones_like(u_pred),
+        create_graph=True,
+        retain_graph=True,
+        allow_unused=True
+    )
+
+    print('Broke here 2')
+    print(f'gradients: {grads}')
+
     grad_u = torch.autograd.grad(
-        u_pred.sum(),
+        u_pred,
         inputs_tensor,
         create_graph=True,
         retain_graph=True,
@@ -89,8 +108,9 @@ def compute_troposphere_gradients(inputs_tensor, model_outputs):
 
     # Gradient of v with respect to all inputs
     grad_v = torch.autograd.grad(
-        v_pred.sum(),
+        v_pred,
         inputs_tensor,
+        grad_outputs=torch.ones_like(v_pred),
         create_graph=True,
         retain_graph=True,
         allow_unused=True
@@ -111,6 +131,7 @@ def compute_troposphere_gradients(inputs_tensor, model_outputs):
     grad_w = torch.autograd.grad(
         w_pred.sum(),
         inputs_tensor,
+        grad_outputs=torch.ones_like(w_pred),
         create_graph=True,
         retain_graph=True,
         allow_unused=True
@@ -125,6 +146,7 @@ def compute_troposphere_gradients(inputs_tensor, model_outputs):
     grad_z = torch.autograd.grad(
         z_pred.sum(),
         inputs_tensor,
+        grad_outputs=torch.ones_like(z_pred),
         create_graph=True,
         retain_graph=True,
         allow_unused=True

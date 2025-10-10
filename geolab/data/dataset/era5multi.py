@@ -27,9 +27,17 @@ class ERA5MultiData:
             # get dimensions
             dimensions = dict(ds.dims)
 
-            # get the coordinates
-            coordinates = {i : (ds.coords[i].data.astype(np.float64), ds.coords[i].data.size, str(ds.coords[i].values.dtype), ds.coords[i].shape)
-                           for i in ds.coords}
+            # List of coordinates to keep
+            coords_to_keep = ['valid_time', 'pressure_level', 'latitude', 'longitude']
+
+            # Filter coordinates
+            coordinates = {
+                i: (ds.coords[i].data.astype(np.float64),
+                    ds.coords[i].data.size,
+                    str(ds.coords[i].values.dtype),
+                    ds.coords[i].shape)
+                for i in ds.coords if i in coords_to_keep
+            }
 
             # get the variables
             data_variables = {ds.data_vars[var].name: (ds.data_vars[var].data, ds.data_vars[var].size, str(ds.data_vars[var].values.dtype), ds.data_vars[var].shape ) for var in variables}
@@ -74,7 +82,7 @@ class ERA5MultiData:
                 sliced = data_array[lo]
             else:
                 sliced = data_array  # Default to full data if we can't determine the dimension
-                
+
             coordinates[k] = (sliced, sliced.size, sliced.shape, str(sliced.dtype))
 
         return coordinates, data
@@ -215,7 +223,7 @@ class ERA5MultiData:
         return {
             'data': {**coordinates, **variable_data, 'classification': real_classifier,},
             'count': [real_count]
-        }, statistics # not implemented well yet
+        }, statistics
 
 
 
@@ -226,13 +234,13 @@ class ERA5MultiDataset(Dataset):
                  indices,
                  include_virtual,
                  variables,
-                 scale):
+                 pi_scale):
         self.data = data
         self.statistics = statistics
         self.idx = indices
         self.include_virtual = include_virtual
         self.variables = variables
-        self.scale = scale
+        self.pi_scale = pi_scale
 
     def __len__(self):
         return len(self.idx)
@@ -256,16 +264,18 @@ class ERA5MultiDataset(Dataset):
         # Latitude to [-1, 1] then scale [-pi/2, pi/2]
         lat_min, lat_max = self.statistics['latitude'][0], self.statistics['latitude'][1]
         lat_norm = self.normalise(lat_raw, lat_min, lat_max)
-        lat_scaled = lat_norm * (torch.pi / 2)
+
 
         # Longitude to [-1, 1] then scale [-pi, pi]
         lon_min, lon_max = self.statistics['longitude'][0], self.statistics['longitude'][1]
         lon_norm = self.normalise(lon_raw, lon_min, lon_max)
-        lon_scaled = lon_norm * torch.pi
+        if self.pi_scale:
+            lon_norm = lon_norm * torch.pi
+            lat_norm = lat_norm * (torch.pi / 2)
 
         coords = {
-            "longitude": torch.tensor(lon_scaled),
-            "latitude": torch.tensor(lat_scaled),
+            "longitude": torch.tensor(lon_norm),
+            "latitude": torch.tensor(lat_norm),
             "pressure_level": torch.tensor(pressure),
             "time": torch.tensor(time_norm)
         }

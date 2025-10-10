@@ -27,8 +27,8 @@ class TroposphereDataModule(LightningDataModule):
             use_lhs = True,
             batch_size: int = 32,
             val_split: float = 0.15,
-            test_split: float = 0.15,
-            scale: bool = True,
+            test_split: float = 0.70,
+            pi_scale: bool = True,
             num_workers: int = 4,
             pin_memory: bool = True,
     ):
@@ -48,7 +48,7 @@ class TroposphereDataModule(LightningDataModule):
             seed: Random seed for reproducibility
         """
         super().__init__()
-        self.save_hyperparameters(ignore=["read_data_fn"])
+        self.save_hyperparameters()
 
         self.data_dir = data_dir
         self.read_data_fn = read_data_fn
@@ -63,7 +63,7 @@ class TroposphereDataModule(LightningDataModule):
         self.use_lhs = use_lhs
         self.batch_size = batch_size
         self.test_split = test_split
-        self.scale = scale
+        self.pi_scale = pi_scale
         self.val_split = val_split
         self.num_workers = num_workers
         self.pin_memory = pin_memory
@@ -106,6 +106,13 @@ class TroposphereDataModule(LightningDataModule):
         self.rng = np.random.default_rng()  # Fixed seed for reproducibility
         total_points = data['count'][0]
         shuffled_idx = self.rng.permutation(total_points)
+
+        print(f"Total points: {total_points}")
+        print("Data shapes before shuffling:")
+        for k, v in data['data'].items():
+            print(f"  {k}: {v.shape} and size {v.size}")
+        print("Shuffled indices shape:", shuffled_idx.shape)
+
         
         # Shuffle all arrays in the data dictionary
         for k, v in data['data'].items():
@@ -131,7 +138,7 @@ class TroposphereDataModule(LightningDataModule):
             indices=train_idx,
             include_virtual=self.include_virtual,
             variables=self.solution_vars,
-            scale=self.scale
+            pi_scale=self.pi_scale
         )
 
         self.val_dataset = ERA5MultiDataset(
@@ -140,7 +147,7 @@ class TroposphereDataModule(LightningDataModule):
             indices=val_idx,
             include_virtual=self.include_virtual,
             variables=self.solution_vars,
-            scale=self.scale
+            pi_scale=self.pi_scale
         )
 
         self.test_dataset = ERA5MultiDataset(
@@ -149,7 +156,7 @@ class TroposphereDataModule(LightningDataModule):
             indices=test_idx,
             include_virtual=self.include_virtual,
             variables=self.solution_vars,
-            scale=self.scale
+            pi_scale=self.pi_scale
         )
 
     def train_dataloader(self):

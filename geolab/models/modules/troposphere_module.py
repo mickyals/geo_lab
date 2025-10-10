@@ -58,10 +58,10 @@ class TroposhpereLightningModule(LightningModule):
         scale: int,
         # optimizer configs
         optimizer_name: str,
-        optimizer_config: Dict[str, Any],
+        optimizer_config,
         # scheduler configs
         scheduler_name: str,
-        scheduler_config: Dict[str, Any],
+        scheduler_config,
         # Train PINN
         train_pinn: bool,
         physics_loss_weight: float=None,
@@ -159,8 +159,7 @@ class TroposhpereLightningModule(LightningModule):
         self.val_loss.reset()
         self.val_best.reset()
 
-    def model_step(
-        self, batch):
+    def model_step(self, batch):
         """Perform a single model step on a batch of data.
 
         :param batch: A batch of data (a tuple) containing the input tensor of images and target labels.
@@ -187,6 +186,10 @@ class TroposhpereLightningModule(LightningModule):
         # === Forward pass ===
         preds = self.forward(inputs)
 
+        # Ensure outputs require grad if train_pinn
+        if self.train_pinn:
+            preds = preds.clone().requires_grad_(True)
+
         # === Separate real and virtual points ===
         # classification == True → real data (for MSE)
         real_mask = classification.bool()
@@ -203,6 +206,10 @@ class TroposhpereLightningModule(LightningModule):
 
             variable_names = list(variables.keys())
             model_outputs_dict = {k: model_outputs[:, i] for i, k in enumerate(variable_names)}
+
+            print("inputs requires_grad:", inputs.requires_grad)
+            for k, v in model_outputs_dict.items():
+                print(f"{k} requires_grad: {v.requires_grad}")
 
             ns_longitude, ns_latitude, mass_cont = troposphere_pde_residual(
                 inputs, model_outputs_dict
@@ -350,6 +357,10 @@ class TroposhpereLightningModule(LightningModule):
         
     def on_test_epoch_end(self) -> None:
         """Lightning hook that is called when a test epoch ends."""
+
+        pass
+
+    def on_train_end(self):
         pass
 
     def setup(self, stage: str) -> None:
@@ -391,8 +402,6 @@ class TroposhpereLightningModule(LightningModule):
             )
 
         optimizer_config = getattr(self.hparams, 'optimizer_config', {})
-        if not isinstance(optimizer_config, dict):
-            raise TypeError(f"optimizer_config must be a dict, got {type(optimizer_config)}")
 
         # Initialize optimizer
         optimizer = optimizer_map[self.hparams.optimizer_name](
@@ -415,8 +424,6 @@ class TroposhpereLightningModule(LightningModule):
                 )
 
             scheduler_config = getattr(self.hparams, 'scheduler_config', {})
-            if not isinstance(scheduler_config, dict):
-                raise TypeError(f"scheduler_config must be a dict, got {type(scheduler_config)}")
 
             scheduler = scheduler_map[self.hparams.scheduler_name](optimizer, **scheduler_config)
 
