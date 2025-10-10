@@ -32,7 +32,7 @@ class ERA5MultiData:
 
             # Filter coordinates
             coordinates = {
-                i: (ds.coords[i].data.astype(np.float64),
+                i: (ds.coords[i].data.astype(np.float32),
                     ds.coords[i].data.size,
                     str(ds.coords[i].values.dtype),
                     ds.coords[i].shape)
@@ -40,7 +40,7 @@ class ERA5MultiData:
             }
 
             # get the variables
-            data_variables = {ds.data_vars[var].name: (ds.data_vars[var].data, ds.data_vars[var].size, str(ds.data_vars[var].values.dtype), ds.data_vars[var].shape ) for var in variables}
+            data_variables = {ds.data_vars[var].name: (ds.data_vars[var].data.astype(np.float32), ds.data_vars[var].size, str(ds.data_vars[var].values.dtype), ds.data_vars[var].shape ) for var in variables}
 
             # get the metadata
             attributes = ds.attrs
@@ -274,10 +274,10 @@ class ERA5MultiDataset(Dataset):
             lat_norm = lat_norm * (torch.pi / 2)
 
         coords = {
-            "longitude": torch.tensor(lon_norm),
-            "latitude": torch.tensor(lat_norm),
-            "pressure_level": torch.tensor(pressure),
-            "time": torch.tensor(time_norm)
+            "longitude": torch.tensor(lon_norm, dtype=torch.float32),
+            "latitude": torch.tensor(lat_norm, dtype=torch.float32),
+            "pressure_level": torch.tensor(pressure, dtype=torch.float32),
+            "time": torch.tensor(time_norm, dtype=torch.float32)
         }
 
         # --------------------
@@ -288,7 +288,7 @@ class ERA5MultiDataset(Dataset):
             var_min, var_max = self.statistics[var][0], self.statistics[var][1]
             value = self.data['data'][var][idx]
             value_norm = self.normalise(value, var_min, var_max)
-            vars_data[var] = torch.tensor(value_norm)
+            vars_data[var] = torch.tensor(value_norm, dtype=torch.float32)
 
         # --------------------
         # Classification

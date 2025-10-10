@@ -65,35 +65,17 @@ def compute_troposphere_gradients(inputs_tensor, model_outputs):
 
     # Compute gradients with respect to the full input tensor
     # Then extract the relevant column for each coordinate
-    
-    # Gradient of u with respect to all inputs
-    print(f'inputs_tensor: {inputs_tensor.shape}')
-    print(f'u_pred: {u_pred.shape}')
-    print(f'v_pred: {v_pred.shape}')
-    print(f'w_pred: {w_pred.shape}')
-    print(f'z_pred: {z_pred.shape}')
 
-    print('Broke here')
-    grads = torch.autograd.grad(
+
+    grad_u = torch.autograd.grad(
         u_pred,
         inputs_tensor,
         grad_outputs=torch.ones_like(u_pred),
         create_graph=True,
         retain_graph=True,
         allow_unused=True
-    )
-
-    print('Broke here 2')
-    print(f'gradients: {grads}')
-
-    grad_u = torch.autograd.grad(
-        u_pred,
-        inputs_tensor,
-        create_graph=True,
-        retain_graph=True,
-        allow_unused=True
     )[0]
-    
+
     if grad_u is not None:
         grads["u_x"] = grad_u[:, 0]  # longitude (column 0)
         grads["u_y"] = grad_u[:, 1]  # latitude (column 1)
@@ -106,6 +88,7 @@ def compute_troposphere_gradients(inputs_tensor, model_outputs):
         grads["u_p"] = torch.zeros_like(u_pred)
         grads["u_t"] = torch.zeros_like(u_pred)
 
+
     # Gradient of v with respect to all inputs
     grad_v = torch.autograd.grad(
         v_pred,
@@ -115,7 +98,8 @@ def compute_troposphere_gradients(inputs_tensor, model_outputs):
         retain_graph=True,
         allow_unused=True
     )[0]
-    
+
+
     if grad_v is not None:
         grads["v_x"] = grad_v[:, 0]
         grads["v_y"] = grad_v[:, 1]
@@ -127,9 +111,10 @@ def compute_troposphere_gradients(inputs_tensor, model_outputs):
         grads["v_p"] = torch.zeros_like(v_pred)
         grads["v_t"] = torch.zeros_like(v_pred)
 
+
     # Gradient of w with respect to pressure
     grad_w = torch.autograd.grad(
-        w_pred.sum(),
+        w_pred,
         inputs_tensor,
         grad_outputs=torch.ones_like(w_pred),
         create_graph=True,
@@ -138,13 +123,16 @@ def compute_troposphere_gradients(inputs_tensor, model_outputs):
     )[0]
     
     if grad_w is not None:
+
         grads["w_p"] = grad_w[:, 2]  # pressure (column 2)
+
     else:
         grads["w_p"] = torch.zeros_like(w_pred)
 
+
     # Gradient of z with respect to longitude and latitude
     grad_z = torch.autograd.grad(
-        z_pred.sum(),
+        z_pred,
         inputs_tensor,
         grad_outputs=torch.ones_like(z_pred),
         create_graph=True,
@@ -153,6 +141,7 @@ def compute_troposphere_gradients(inputs_tensor, model_outputs):
     )[0]
     
     if grad_z is not None:
+
         grads["z_x"] = grad_z[:, 0]  # longitude (column 0)
         grads["z_y"] = grad_z[:, 1]  # latitude (column 1)
     else:
@@ -188,10 +177,12 @@ def coriolis_force(latitude, earth_radius=6371222.9, central_latitude=0):
     coriolis_force = {}
 
     # Angular velocity of the Earth in radians per second
-    omega = 7.2921e-5
+
+    omega = torch.tensor(7.2921e-5, dtype=latitude.dtype, device=latitude.device)
+    earth_radius = torch.tensor(6371222.9, dtype=latitude.dtype, device=latitude.device)
 
     # Convert latitude to radians - coriolis force is only defined for latitudes between -90 and 90 but is symmetric about the equator
-    latitude_rad = torch.abs(latitude) * np.pi / 180
+    latitude_rad = torch.abs(latitude) * torch.pi / 180
 
     # f normalized: 0 at equator, 1 at poles
     # f = 2 * omega * sin(latitude_rad)
@@ -200,7 +191,7 @@ def coriolis_force(latitude, earth_radius=6371222.9, central_latitude=0):
 
     # f_0 at central latitude (magnitude, 0–1)
     # f_0 = 2 * omega * sin(central_latitude_rad)
-    central_latitude_rad = torch.abs(torch.tensor(central_latitude, device=latitude.device)) * (torch.pi / 180)
+    central_latitude_rad = torch.abs(torch.tensor(central_latitude, dtype=latitude.dtype, device=latitude.device)) * (torch.pi / 180)
     f_0 = 2 * omega * torch.sin(central_latitude_rad)
     coriolis_force["f_0"] = f_0 / (2 * omega)
 

@@ -160,68 +160,57 @@ class TroposhpereLightningModule(LightningModule):
         self.val_best.reset()
 
     def model_step(self, batch):
-        """Perform a single model step on a batch of data.
-
-        :param batch: A batch of data (a tuple) containing the input tensor of images and target labels.
-
-        :return: A tuple containing (in order):
-            - A tensor of losses.
-            - A tensor of predictions.
-            - A tensor of target labels.
-        """
+        """Perform a single model step on a batch of data."""
         coords = batch['coords']
         variables = batch['variables']
         classification = batch['classification']
 
-        # === Build input and target tensors ===
-        inputs = torch.stack([
+        # === Build input tensor ===
+        coord_list = [
             coords['longitude'],
             coords['latitude'],
             coords['pressure_level'],
             coords['time']
-        ], dim=1).float().requires_grad_(self.train_pinn)
+        ]
 
-        targets = torch.stack(list(variables.values()), dim=1)
+        inputs = torch.stack(coord_list, dim=1).float()
+
+        targets = torch.stack(list(variables.values()), dim=1).float()
 
         # === Forward pass ===
-        preds = self.forward(inputs)
-
-        # Ensure outputs require grad if train_pinn
+        # For PINN, we need gradients even during validation/testing
         if self.train_pinn:
-            preds = preds.clone().requires_grad_(True)
+            # Enable gradients for physics computation
+            inputs = inputs.detach().requires_grad_(True)
+            preds = self.forward(inputs)
+        else:
+            preds = self.forward(inputs)
 
         # === Separate real and virtual points ===
-        # classification == True → real data (for MSE)
         real_mask = classification.bool()
-
 
         # === Data loss (MSE for real samples) ===
         all_loss = self.criterion(preds, targets)
         data_loss = all_loss[real_mask].mean()
 
         if self.train_pinn:
-            model_outputs = preds
-
-            longitude, latitude, pressure_level, time = inputs[:, 0], inputs[:, 1], inputs[:, 2], inputs[:, 3]
-
             variable_names = list(variables.keys())
-            model_outputs_dict = {k: model_outputs[:, i] for i, k in enumerate(variable_names)}
+            model_outputs_dict = {k: preds[:, i] for i, k in enumerate(variable_names)}
 
-            print("inputs requires_grad:", inputs.requires_grad)
-            for k, v in model_outputs_dict.items():
-                print(f"{k} requires_grad: {v.requires_grad}")
-
+            # Compute physics residuals
             ns_longitude, ns_latitude, mass_cont = troposphere_pde_residual(
                 inputs, model_outputs_dict
             )
 
+            # Physics loss from residuals
             physics_loss = ns_longitude.pow(2).mean() + ns_latitude.pow(2).mean() + mass_cont.pow(2).mean()
 
             total_loss = ((1 - self.physics_loss_weight) * data_loss) + (self.physics_loss_weight * physics_loss)
 
-            return total_loss, data_loss, physics_loss, mass_cont, ns_longitude, ns_latitude
+            # Ensure loss is Float32 to match model parameters
+            return total_loss.float(), data_loss.float(), physics_loss.float(), mass_cont.float(), ns_longitude.float(), ns_latitude.float()
 
-        return data_loss
+        return data_loss.float()
 
 
 
@@ -247,12 +236,12 @@ class TroposhpereLightningModule(LightningModule):
             self.train_ns_longitude(ns_longitude)
             self.train_ns_latitude(ns_latitude)
 
-            self.log("train_loss", self.train_loss)
-            self.log("train_physics_loss", self.train_physics_loss)
-            self.log("train_data_loss", self.train_data_loss)
-            self.log("train_mass_cont", self.train_mass_cont)
-            self.log("train_ns_longitude", self.train_ns_longitude)
-            self.log("train_ns_latitude", self.train_ns_latitude)
+            self.log("train_loss", self.train_loss, on_epoch=True, on_step=True)
+            self.log("train_physics_loss", self.train_physics_loss, on_epoch=True, on_step=True)
+            self.log("train_data_loss", self.train_data_loss, on_epoch=True, on_step=True)
+            self.log("train_mass_cont", self.train_mass_cont, on_epoch=True, on_step=True)
+            self.log("train_ns_longitude", self.train_ns_longitude, on_epoch=True, on_step=True)
+            self.log("train_ns_latitude", self.train_ns_latitude, on_epoch=True, on_step=True)
 
             return total_loss
 
@@ -261,7 +250,7 @@ class TroposhpereLightningModule(LightningModule):
 
             # update and log metrics
             self.train_loss(data_loss)
-            self.log("train_loss", self.train_loss)
+            self.log("train_loss", self.train_loss, on_epoch=True, on_step=True)
 
             return data_loss
 
@@ -271,15 +260,12 @@ class TroposhpereLightningModule(LightningModule):
         pass
 
     def validation_step(self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int) -> None:
-        """Perform a single validation step on a batch of data from the validation set.
-
-        :param batch: A batch of data (a tuple) containing the input tensor of images and target
-            labels.
-        :param batch_idx: The index of the current batch.
-        """
+        """Perform a single validation step on a batch of data from the validation set."""
 
         if self.train_pinn:
-            total_loss, data_loss, physics_loss, mass_cont, ns_longitude, ns_latitude = self.model_step(batch)
+            # Enable gradients for physics loss computation during validation
+            with torch.set_grad_enabled(True):
+                total_loss, data_loss, physics_loss, mass_cont, ns_longitude, ns_latitude = self.model_step(batch)
 
             # update and log metrics
             self.val_loss(total_loss)
@@ -289,12 +275,12 @@ class TroposhpereLightningModule(LightningModule):
             self.val_ns_longitude(ns_longitude)
             self.val_ns_latitude(ns_latitude)
 
-            self.log("val_loss", self.val_loss)
-            self.log("val_physics_loss", self.val_physics_loss)
-            self.log("val_data_loss", self.val_data_loss)
-            self.log("val_mass_cont", self.val_mass_cont)
-            self.log("val_ns_longitude", self.val_ns_longitude)
-            self.log("val_ns_latitude", self.val_ns_latitude)
+            self.log("val_loss", self.val_loss, on_epoch=True, on_step=True)
+            self.log("val_physics_loss", self.val_physics_loss, on_epoch=True, on_step=True)
+            self.log("val_data_loss", self.val_data_loss, on_epoch=True, on_step=True)
+            self.log("val_mass_cont", self.val_mass_cont, on_epoch=True, on_step=True)
+            self.log("val_ns_longitude", self.val_ns_longitude, on_epoch=True, on_step=True)
+            self.log("val_ns_latitude", self.val_ns_latitude, on_epoch=True, on_step=True)
 
             return total_loss
 
@@ -303,7 +289,7 @@ class TroposhpereLightningModule(LightningModule):
 
             # update and log metrics
             self.val_loss(data_loss)
-            self.log("val_loss", self.val_loss)
+            self.log("val_loss", self.val_loss, on_epoch=True, on_step=True)
 
             return data_loss
 
@@ -337,12 +323,12 @@ class TroposhpereLightningModule(LightningModule):
             self.test_ns_longitude(ns_longitude)
             self.test_ns_latitude(ns_latitude)
 
-            self.log("test_loss", self.test_loss)
-            self.log("test_physics_loss", self.test_physics_loss)
-            self.log("test_data_loss", self.test_data_loss)
-            self.log("test_mass_cont", self.test_mass_cont)
-            self.log("test_ns_longitude", self.test_ns_longitude)
-            self.log("test_ns_latitude", self.test_ns_latitude)
+            self.log("test_loss", self.test_loss, on_epoch=True, on_step=True)
+            self.log("test_physics_loss", self.test_physics_loss, on_epoch=True, on_step=True)
+            self.log("test_data_loss", self.test_data_loss, on_epoch=True, on_step=True)
+            self.log("test_mass_cont", self.test_mass_cont, on_epoch=True, on_step=True)
+            self.log("test_ns_longitude", self.test_ns_longitude, on_epoch=True, on_step=True)
+            self.log("test_ns_latitude", self.test_ns_latitude, on_epoch=True, on_step=True)
 
             return total_loss
         
@@ -351,7 +337,7 @@ class TroposhpereLightningModule(LightningModule):
             
             # update and log metrics
             self.test_loss(data_loss)
-            self.log("test_loss", self.test_loss)
+            self.log("test_loss", self.test_loss, on_epoch=True, on_step=True)
 
             return data_loss
         

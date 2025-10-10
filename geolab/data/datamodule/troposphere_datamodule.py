@@ -31,6 +31,7 @@ class TroposphereDataModule(LightningDataModule):
             pi_scale: bool = True,
             num_workers: int = 4,
             pin_memory: bool = True,
+            seed: int = None,
     ):
         """Initialize a TroposphereDataModule.
 
@@ -67,6 +68,7 @@ class TroposphereDataModule(LightningDataModule):
         self.val_split = val_split
         self.num_workers = num_workers
         self.pin_memory = pin_memory
+        self.seed = seed
 
         # Dataset attributes
         self.train_dataset = None
@@ -103,7 +105,8 @@ class TroposphereDataModule(LightningDataModule):
         )
 
         # Create shuffled indices for all data points
-        self.rng = np.random.default_rng()  # Fixed seed for reproducibility
+        seed = self.seed if self.seed is not None else None
+        self.rng = np.random.default_rng(seed)  # Use seed for reproducibility
         total_points = data['count'][0]
         shuffled_idx = self.rng.permutation(total_points)
 

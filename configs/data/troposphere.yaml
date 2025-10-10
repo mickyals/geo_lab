@@ -14,3 +14,5 @@ pi_scale: true  # Scale coordinates
 batch_size: 20000
 num_workers: 0  # Required for Windows/Jupyter
 pin_memory: true
+seed: ${seed}  # Use seed from experiment config
+

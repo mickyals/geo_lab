@@ -16,10 +16,11 @@ def troposphere_pde_residual(inputs_tensor, outputs, mass_balance=True):
     """
     u, v, w, z = outputs["u"], outputs["v"], outputs["w"], outputs["z"]
 
-    # Extract coordinates from inputs_tensor for Coriolis calculation
-    latitude = inputs_tensor[:, 1]  # latitude is column 1
 
+    latitude = inputs_tensor[:, 1]
     grads = compute_troposphere_gradients(inputs_tensor, outputs)
+
+
     coriolis_params = coriolis_force(latitude)
 
     navier_stokes_longitudinal = grads["u_t"] \
