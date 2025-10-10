@@ -53,7 +53,7 @@ class TroposphereDataModule(LightningDataModule):
         self.data_dir = data_dir
         self.read_data_fn = read_data_fn
         self.solution_vars = solution_vars
-        self.time_idx_range = time_idx_range if time_idx_range is not None else [0, 1]
+        self.time_idx_range = time_idx_range if time_idx_range is not None else None
         self.pressure_idx_range = pressure_idx_range if pressure_idx_range is not None else None
         self.latitude_idx_range = latitude_idx_range if latitude_idx_range is not None else None
         self.longitude_idx_range = longitude_idx_range if longitude_idx_range is not None else None
