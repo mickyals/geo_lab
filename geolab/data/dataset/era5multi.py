@@ -210,12 +210,12 @@ class ERA5MultiData:
             return combined_data, statistics
 
         # Return real data only (first element of the subset_data tuple is the data array)
+        coordinates = {k: v[0] for k, v in real_coordinates.items()}
+        variable_data = {var: subset_data[var][0].flatten() for var in self.variables}
         return {
-            'coordinates': {k: v[0] for k, v in real_coordinates.items()},  # Extract just the data arrays
-            'variable_data': {var: subset_data[var][0].flatten() for var in self.variables},
-            'classification': real_classifier,
-            'count': real_count
-        }, statistics
+            'data': {**coordinates, **variable_data, 'classification': real_classifier,},
+            'count': [real_count]
+        }, statistics # not implemented well yet
 
 
 
@@ -264,10 +264,10 @@ class ERA5MultiDataset(Dataset):
         lon_scaled = lon_norm * torch.pi
 
         coords = {
-            "longitude": torch.tensor(lon_scaled, requires_grad=True),
-            "latitude": torch.tensor(lat_scaled, requires_grad=True),
-            "pressure_level": torch.tensor(pressure, requires_grad=True),
-            "time": torch.tensor(time_norm, requires_grad=True)
+            "longitude": torch.tensor(lon_scaled),
+            "latitude": torch.tensor(lat_scaled),
+            "pressure_level": torch.tensor(pressure),
+            "time": torch.tensor(time_norm)
         }
 
         # --------------------

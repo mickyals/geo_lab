@@ -27,5 +27,5 @@ class FourierFeatures(nn.Module):
         return beta
 
     def forward(self, x):
-        x_transformed = 2 * torch.pi * (x @ self.beta.T)
+        x_transformed = 2 * torch.pi * (x.to(self.beta.dtype) @ self.beta.T)
         return torch.cat([torch.sin(x_transformed), torch.cos(x_transformed)], dim=-1)

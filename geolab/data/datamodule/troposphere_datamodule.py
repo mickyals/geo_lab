@@ -121,8 +121,7 @@ class TroposphereDataModule(LightningDataModule):
         val_idx = np.arange(train_size, train_size + val_size)
         test_idx = np.arange(train_size + val_size, total_points)
 
-
-
+        self.statistics = statistics
 
         
         # Create datasets with the shuffled data and corresponding indices
