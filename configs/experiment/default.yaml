@@ -17,7 +17,6 @@ tags: ["training_run", "prelim", "Siren"]
 seed: 12345
 
 trainer:
-  min_epochs: 1
   max_epochs: 10
   log_every_n_steps: 4
 
