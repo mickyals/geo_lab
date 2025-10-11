@@ -12,13 +12,14 @@ defaults:
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
 
-tags: ["troposphere", "pinn"]
+tags: ["training_run", "prelim", "Siren"]
 
 seed: 12345
 
 trainer:
   min_epochs: 1
-  max_epochs: 2
+  max_epochs: 10
+  log_every_n_steps: 4
 
 model:
   train_pinn: true
@@ -26,7 +27,7 @@ model:
 
 data:
   include_virtual: true
-  num_virtual: 100000
+  num_virtual: 1000000
 
 logger:
   wandb:

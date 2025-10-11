@@ -25,7 +25,7 @@ class ERA5MultiData:
 
         with read_data_fn(data_dir) as ds:
             # get dimensions
-            dimensions = dict(ds.dims)
+            dimensions = dict(ds.sizes)
 
             # List of coordinates to keep
             coords_to_keep = ['valid_time', 'pressure_level', 'latitude', 'longitude']
@@ -40,7 +40,7 @@ class ERA5MultiData:
             }
 
             # get the variables
-            data_variables = {ds.data_vars[var].name: (ds.data_vars[var].data.astype(np.float32), ds.data_vars[var].size, str(ds.data_vars[var].values.dtype), ds.data_vars[var].shape ) for var in variables}
+            data_variables = {ds.data_vars[var].name: (ds.data_vars[var].astype(np.float32), ds.data_vars[var].size, str(ds.data_vars[var].dtype), ds.data_vars[var].shape ) for var in variables}
 
             # get the metadata
             attributes = ds.attrs
@@ -62,7 +62,7 @@ class ERA5MultiData:
 
         data = {}
         for k, v in self.variables.items():
-            data_array = v[0]  # Get the actual numpy array
+            data_array = v[0].values  # Get the actual numpy array
             sliced = data_array[t, p, la, lo]
             data[k] = (sliced, sliced.size, sliced.shape, str(sliced.dtype))
 
@@ -112,12 +112,10 @@ class ERA5MultiData:
         return slice(idx_range[0], idx_range[1])
 
     def _get_stats(self, item):
-        print({k: v[0].size for k, v in item.items()})
-        return {k: [v[0].min(), v[0].max(), v[0].mean(), v[0].std(), ] for k, v in item.items()}
+        return {k: [v[0].min(), v[0].max(), v[0].mean(), v[0].std() ] for k, v in item.items()}
 
 
     def _get_size(self, item):
-        print({k: v[0].size for k, v in item.items()})
         return {k: v[0].size for k, v in item.items()}
 
 
@@ -249,10 +247,11 @@ class ERA5MultiDataset(Dataset):
         # --------------------
         # Extract raw coordinates
         # --------------------
-        lon_raw = self.data['data']['longitude'][idx]
-        lat_raw = self.data['data']['latitude'][idx]
-        pressure = self.data['data']['pressure_level'][idx]
-        time_raw = self.data['data']['valid_time'][idx]
+        lon_raw = self.data['longitude'][idx]
+        lat_raw = self.data['latitude'][idx]
+        pressure = self.data['pressure_level'][idx]
+        time_raw = self.data['valid_time'][idx]
+
 
         # --------------------
         # Normalize coordinates
@@ -284,16 +283,17 @@ class ERA5MultiDataset(Dataset):
         # Normalize variable data
         # --------------------
         vars_data = {}
+
         for var in self.variables:
             var_min, var_max = self.statistics[var][0], self.statistics[var][1]
-            value = self.data['data'][var][idx]
+            value = self.data[var][idx]
             value_norm = self.normalise(value, var_min, var_max)
             vars_data[var] = torch.tensor(value_norm, dtype=torch.float32)
 
         # --------------------
         # Classification
         # --------------------
-        classification = torch.tensor(self.data['data']['classification'][idx])
+        classification = torch.tensor(self.data['classification'][idx])
 
         return {
             "coords": coords,

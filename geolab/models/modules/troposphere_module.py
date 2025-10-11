@@ -194,6 +194,7 @@ class TroposhpereLightningModule(LightningModule):
         data_loss = all_loss[real_mask].mean()
 
         if self.train_pinn:
+
             variable_names = list(variables.keys())
             model_outputs_dict = {k: preds[:, i] for i, k in enumerate(variable_names)}
 
@@ -264,7 +265,8 @@ class TroposhpereLightningModule(LightningModule):
 
         if self.train_pinn:
             # Enable gradients for physics loss computation during validation
-            with torch.set_grad_enabled(True):
+            with torch.enable_grad():
+
                 total_loss, data_loss, physics_loss, mass_cont, ns_longitude, ns_latitude = self.model_step(batch)
 
             # update and log metrics
@@ -312,34 +314,38 @@ class TroposhpereLightningModule(LightningModule):
             labels.
         :param batch_idx: The index of the current batch.
         """
-        if self.train_pinn:
-            total_loss, data_loss, physics_loss, mass_cont, ns_longitude, ns_latitude = self.model_step(batch)
-            
-            # update and log metrics
-            self.test_loss(total_loss)
-            self.test_physics_loss(physics_loss)
-            self.test_data_loss(data_loss)
-            self.test_mass_cont(mass_cont)
-            self.test_ns_longitude(ns_longitude)
-            self.test_ns_latitude(ns_latitude)
+        # if self.train_pinn:
+        #     with torch.enable_grad():
+        #         print('here at testing')
+        #         total_loss, data_loss, physics_loss, mass_cont, ns_longitude, ns_latitude = self.model_step(batch)
+        #
+        #     # update and log metrics
+        #     self.test_loss(total_loss)
+        #     self.test_physics_loss(physics_loss)
+        #     self.test_data_loss(data_loss)
+        #     self.test_mass_cont(mass_cont)
+        #     self.test_ns_longitude(ns_longitude)
+        #     self.test_ns_latitude(ns_latitude)
+        #
+        #     self.log("test_loss", self.test_loss, on_epoch=True, on_step=True)
+        #     self.log("test_physics_loss", self.test_physics_loss, on_epoch=True, on_step=True)
+        #     self.log("test_data_loss", self.test_data_loss, on_epoch=True, on_step=True)
+        #     self.log("test_mass_cont", self.test_mass_cont, on_epoch=True, on_step=True)
+        #     self.log("test_ns_longitude", self.test_ns_longitude, on_epoch=True, on_step=True)
+        #     self.log("test_ns_latitude", self.test_ns_latitude, on_epoch=True, on_step=True)
+        #
+        #     return total_loss
+        #
+        # else:
+        #     data_loss = self.model_step(batch)
+        #
+        #     # update and log metrics
+        #     self.test_loss(data_loss)
+        #     self.log("test_loss", self.test_loss, on_epoch=True, on_step=True)
+        #
+        #     return data_loss
 
-            self.log("test_loss", self.test_loss, on_epoch=True, on_step=True)
-            self.log("test_physics_loss", self.test_physics_loss, on_epoch=True, on_step=True)
-            self.log("test_data_loss", self.test_data_loss, on_epoch=True, on_step=True)
-            self.log("test_mass_cont", self.test_mass_cont, on_epoch=True, on_step=True)
-            self.log("test_ns_longitude", self.test_ns_longitude, on_epoch=True, on_step=True)
-            self.log("test_ns_latitude", self.test_ns_latitude, on_epoch=True, on_step=True)
-
-            return total_loss
-        
-        else:
-            data_loss = self.model_step(batch)
-            
-            # update and log metrics
-            self.test_loss(data_loss)
-            self.log("test_loss", self.test_loss, on_epoch=True, on_step=True)
-
-            return data_loss
+        pass
         
     def on_test_epoch_end(self) -> None:
         """Lightning hook that is called when a test epoch ends."""

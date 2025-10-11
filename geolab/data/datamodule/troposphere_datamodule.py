@@ -31,7 +31,6 @@ class TroposphereDataModule(LightningDataModule):
             pi_scale: bool = True,
             num_workers: int = 4,
             pin_memory: bool = True,
-            seed: int = None,
     ):
         """Initialize a TroposphereDataModule.
 
@@ -68,7 +67,6 @@ class TroposphereDataModule(LightningDataModule):
         self.val_split = val_split
         self.num_workers = num_workers
         self.pin_memory = pin_memory
-        self.seed = seed
 
         # Dataset attributes
         self.train_dataset = None
@@ -77,90 +75,133 @@ class TroposphereDataModule(LightningDataModule):
         self.era5_data = None
 
     def prepare_data(self):
-        """Download data if needed.
+        """Download or load ERA5 data if needed.
 
-        This method is called only from a single GPU. Do not use it to assign state (self.x = y).
+        This method is called only once (on rank 0).
+        Do not assign state (e.g., self.x = y) here that will be needed later.
         """
-        # You can add data downloading logic here if needed
-        pass
+        print("Preparing ERA5 data...")
 
-    def setup(self, stage: Optional[str] = None):
-        """Load data. Set variables: `self.train_dataset`, `self.val_dataset`, [self.test_dataset](cci:1://file:///C:/Users/micke/OneDrive%20-%20University%20of%20Toronto/geo_lab/tests/test_era5_vertical_velocity.py:18:0-55:13)."""
-        # Initialize ERA5 data
-        self.era5 = ERA5MultiData(
+        era5 = ERA5MultiData(
             data_dir=str(self.data_dir),
             read_data_fn=self.read_data_fn,
             variables=self.solution_vars
         )
 
-        data, statistics = self.era5.run(
-            self.time_idx_range, 
-            self.pressure_idx_range, 
+        # Run the data preparation/loading
+        data, statistics = era5.run(
+            self.time_idx_range,
+            self.pressure_idx_range,
             self.latitude_idx_range,
-            self.longitude_idx_range, 
-            indexing=self.indexing, 
+            self.longitude_idx_range,
+            indexing=self.indexing,
             num_samples=self.num_virtual,
-            include_virtual=self.include_virtual, 
+            include_virtual=self.include_virtual,
             use_lhs=self.use_lhs
         )
 
-        # Create shuffled indices for all data points
-        seed = self.seed if self.seed is not None else None
-        self.rng = np.random.default_rng(seed)  # Use seed for reproducibility
-        total_points = data['count'][0]
-        shuffled_idx = self.rng.permutation(total_points)
+        # Optionally save preprocessed data/statistics to disk
+        # so that setup() can reload quickly without recomputation
+        self._prepared_data = (data, statistics)
+        print("Data prepared successfully.")
 
-        print(f"Total points: {total_points}")
-        print("Data shapes before shuffling:")
-        for k, v in data['data'].items():
-            print(f"  {k}: {v.shape} and size {v.size}")
-        print("Shuffled indices shape:", shuffled_idx.shape)
+    def setup(self, stage: Optional[str] = None):
+        """Split data into train/val/test and create datasets."""
+        if hasattr(self, 'full_data') and self.full_data is not None:
+            print(f"Data already loaded, skipping reload for stage: {stage}")
+            return
 
-        
-        # Shuffle all arrays in the data dictionary
-        for k, v in data['data'].items():
-            v[:] = v[shuffled_idx]
-        
-        # Calculate split sizes
-        test_size = int(total_points * self.test_split)
-        val_size = int(total_points * self.val_split)
-        train_size = total_points - val_size - test_size
-        
-        # Create index arrays for each split
-        train_idx = np.arange(0, train_size)
-        val_idx = np.arange(train_size, train_size + val_size)
-        test_idx = np.arange(train_size + val_size, total_points)
+        print(f"Setting up datasets for stage: {stage}")
+
+        # === Load from prepare_data() output or regenerate if needed ===
+        if hasattr(self, '_prepared_data'):
+            data, statistics = self._prepared_data
+        else:
+            print("Warning: prepare_data() was not run, loading data directly.")
+            era5 = ERA5MultiData(
+                data_dir=str(self.data_dir),
+                read_data_fn=self.read_data_fn,
+                variables=self.solution_vars
+            )
+            data, statistics = era5.run(
+                self.time_idx_range,
+                self.pressure_idx_range,
+                self.latitude_idx_range,
+                self.longitude_idx_range,
+                indexing=self.indexing,
+                num_samples=self.num_virtual,
+                include_virtual=self.include_virtual,
+                use_lhs=self.use_lhs
+            )
 
         self.statistics = statistics
+        self.full_data = data['data']
 
-        
-        # Create datasets with the shuffled data and corresponding indices
+        total_points = data['count'][0]
+        real_points = data['count'][1]
+        virtual_points = data['count'][2]
+
+        print(f"Total={total_points}, Real={real_points}, Virtual={virtual_points}")
+
+        # === Identify real and virtual samples ===
+        if 'classification' in self.full_data:
+            classification = self.full_data['classification']
+            real_indices = np.where(classification)[0]
+            virtual_indices = np.where(~classification)[0]
+        else:
+            # fallback if not explicitly labeled
+            real_indices = np.arange(real_points)
+            virtual_indices = np.arange(real_points, total_points)
+
+        # === Split only the real indices ===
+        self.rng = np.random.default_rng()
+        shuffled_real = self.rng.permutation(real_indices)
+
+        n_val = int(len(real_indices) * self.val_split)
+        n_test = int(len(real_indices) * self.test_split)
+        n_train_real = len(real_indices) - n_val - n_test
+
+        real_train_idx = shuffled_real[:n_train_real]
+        real_val_idx = shuffled_real[n_train_real:n_train_real + n_val]
+        real_test_idx = shuffled_real[n_train_real + n_val:]
+
+        # === Construct splits ===
+        train_idx = np.concatenate([virtual_indices, real_train_idx])
+        train_idx = self.rng.permutation(train_idx)
+
+        val_idx = real_val_idx
+        test_idx = real_test_idx
+
+        print(f"Split sizes -> Train: {len(train_idx)}, Val: {len(val_idx)}, Test: {len(test_idx)}")
+        print(f"  (Real in train: {len(real_train_idx)}, Virtual in train: {len(virtual_indices)})")
+
+        # === Build dataset objects ===
         self.train_dataset = ERA5MultiDataset(
-            data=data,
-            statistics=statistics,
+            data=self.full_data,
+            statistics=self.statistics,
             indices=train_idx,
-            include_virtual=self.include_virtual,
+            include_virtual=True,
             variables=self.solution_vars,
             pi_scale=self.pi_scale
         )
 
         self.val_dataset = ERA5MultiDataset(
-            data=data,
-            statistics=statistics,
+            data=self.full_data,
+            statistics=self.statistics,
             indices=val_idx,
-            include_virtual=self.include_virtual,
+            include_virtual=False,  # real-only validation
             variables=self.solution_vars,
             pi_scale=self.pi_scale
         )
 
-        self.test_dataset = ERA5MultiDataset(
-            data=data,
-            statistics=statistics,
-            indices=test_idx,
-            include_virtual=self.include_virtual,
-            variables=self.solution_vars,
-            pi_scale=self.pi_scale
-        )
+        # self.test_dataset = ERA5MultiDataset(
+        #     data=self.full_data,
+        #     statistics=self.statistics,
+        #     indices=test_idx,
+        #     include_virtual=False,  # real-only test
+        #     variables=self.solution_vars,
+        #     pi_scale=self.pi_scale
+        # )
 
     def train_dataloader(self):
         return DataLoader(
@@ -181,13 +222,13 @@ class TroposphereDataModule(LightningDataModule):
         )
 
     def test_dataloader(self):
-        return DataLoader(
-            dataset=self.test_dataset,
-            batch_size=self.batch_size,
-            num_workers=self.num_workers,
-            pin_memory=self.pin_memory,
-            shuffle=False,
-        )
+        pass
+        #return None #DataLoader(
+        #     dataset=self.test_dataset,
+        #     batch_size=self.batch_size,
+        #     num_workers=self.num_workers,
+        #     pin_memory=self.pin_memory,
+        #     shuffle=False)
 
     def teardown(self, stage: Optional[str] = None):
         """Clean up after fit or test."""

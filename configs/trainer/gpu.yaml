@@ -2,4 +2,6 @@ defaults:
   - default
 
 accelerator: gpu
-devices: 1
+devices: 31
+log_every_n_steps: 10
+
