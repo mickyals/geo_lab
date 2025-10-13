@@ -2,7 +2,7 @@
 xarray
 netcdf4
 zarr
-numcodecs[pcodec]==0.15.1
+numcodecs[pcodec]==0.16.3
 dask
 jupyter
 
