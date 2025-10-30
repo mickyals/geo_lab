@@ -244,6 +244,7 @@ class ERA5MultiDataset(Dataset):
         return len(self.idx)
 
     def __getitem__(self, idx):
+        print(f"Dataset position: {idx}, Actual data index: {self.idx[idx]}")
         # --------------------
         # Extract raw coordinates
         # --------------------
