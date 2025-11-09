@@ -244,14 +244,14 @@ class ERA5MultiDataset(Dataset):
         return len(self.idx)
 
     def __getitem__(self, idx):
-        print(f"Dataset position: {idx}, Actual data index: {self.idx[idx]}")
+        actual_idx = self.idx[idx]
         # --------------------
         # Extract raw coordinates
         # --------------------
-        lon_raw = self.data['longitude'][idx]
-        lat_raw = self.data['latitude'][idx]
-        pressure = self.data['pressure_level'][idx]
-        time_raw = self.data['valid_time'][idx]
+        lon_raw = self.data['longitude'][actual_idx]
+        lat_raw = self.data['latitude'][actual_idx]
+        pressure = self.data['pressure_level'][actual_idx]
+        time_raw = self.data['valid_time'][actual_idx]
 
 
         # --------------------
@@ -287,15 +287,18 @@ class ERA5MultiDataset(Dataset):
 
         for var in self.variables:
             var_min, var_max = self.statistics[var][0], self.statistics[var][1]
-            value = self.data[var][idx]
+            value = self.data[var][actual_idx]
             value_norm = self.normalise(value, var_min, var_max)
             vars_data[var] = torch.tensor(value_norm, dtype=torch.float32)
 
         # --------------------
         # Classification
         # --------------------
-        classification = torch.tensor(self.data['classification'][idx])
-
+        classification = torch.tensor(
+                int(self.data['classification'][actual_idx]), 
+                dtype=torch.long
+        )
+        
         return {
             "coords": coords,
             "variables": vars_data,

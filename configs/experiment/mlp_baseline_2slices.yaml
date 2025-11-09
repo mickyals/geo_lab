@@ -1,0 +1,29 @@
+# @package _global_
+
+# Experiment: MLP baseline with 2 time slices, no physics loss
+# Goal: Test if model can memorize small dataset
+
+task_name: "mlp_baseline_2slices"
+tags: ["mlp_baseline", "2_slices", "no_physics"]
+
+train: True
+test: True
+
+data:
+  time_idx_range: [0, 2]
+  val_split: 0.7
+  test_split: 0.15
+  num_virtual: 0
+  include_virtual: false
+
+model:
+  train_pinn: false
+  physics_loss_weight: 0.0
+
+trainer:
+  max_epochs: 10
+
+logger:
+  wandb:
+    name: "mlp_2slices"
+    group: "mlp_baseline"
