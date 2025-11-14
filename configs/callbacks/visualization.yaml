@@ -1,0 +1,13 @@
+visualization:
+  _target_: geolab.callbacks.visualization_callback.AtmosphericVisualizationCallback
+  plot_every_n_epochs: 5
+  pressure_levels: [850, 500, 200]
+  meridional_longitudes: [0, 180]
+  grid_resolution: 2
+  
+  # Enable/disable specific visualizations
+  enable_horizontal_slices: true
+  enable_meridional_slices: true
+  enable_zonal_mean: true
+  enable_error_heatmap: true
+  enable_physics_residuals: true  # Only runs if train_pinn=true

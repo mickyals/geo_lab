@@ -210,6 +210,7 @@ class TroposphereDataModule(LightningDataModule):
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
             shuffle=True,
+            persistent_workers=True,
         )
 
     def val_dataloader(self):
@@ -219,6 +220,7 @@ class TroposphereDataModule(LightningDataModule):
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
             shuffle=False,
+            persistent_workers=True,
         )
 
     def test_dataloader(self):

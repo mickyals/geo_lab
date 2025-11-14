@@ -38,6 +38,8 @@ from geolab.utils import (
 
 log = RankedLogger(__name__, rank_zero_only=True)
 
+# Set float32 matmul precision for Tensor Cores
+torch.set_float32_matmul_precision('medium')
 
 @task_wrapper
 def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:

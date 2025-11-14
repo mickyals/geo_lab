@@ -107,11 +107,30 @@ class TroposhpereLightningModule(LightningModule):
             self.test_ns_longitude = MeanMetric()
             self.test_ns_latitude = MeanMetric()
 
+            self.train_physics_tropical = MeanMetric()  # |lat| < 30
+            self.train_physics_midlat = MeanMetric()    # 30 < |lat| < 60
+            self.train_physics_polar = MeanMetric()     # |lat| > 60
+            
+            self.val_physics_tropical = MeanMetric()
+            self.val_physics_midlat = MeanMetric()
+            self.val_physics_polar = MeanMetric()
+
 
         self.val_best = MinMetric() # for best validation loss
 
         # metrics
-        # TO DO
+        # Per-variable reconstruction metrics
+        self.train_mse_t = MeanMetric()
+        self.train_mse_w = MeanMetric() 
+        self.train_mse_u = MeanMetric()
+        self.train_mse_z = MeanMetric()
+        self.train_mse_v = MeanMetric()
+
+        self.val_mse_t = MeanMetric()
+        self.val_mse_w = MeanMetric()
+        self.val_mse_u = MeanMetric()
+        self.val_mse_z = MeanMetric()
+        self.val_mse_v = MeanMetric()
 
 
     def _init_model(self) -> nn.Module:
@@ -193,8 +212,11 @@ class TroposhpereLightningModule(LightningModule):
         all_loss = self.criterion(preds, targets)
         data_loss = all_loss[real_mask].mean()
 
-        if self.train_pinn:
+        # === Per-variable MSE ===
+        per_var_losses = all_loss[real_mask].mean(dim=0)  # Shape: [5]
+        mse_t, mse_w, mse_u, mse_z, mse_v = per_var_losses
 
+        if self.train_pinn:
             variable_names = list(variables.keys())
             model_outputs_dict = {k: preds[:, i] for i, k in enumerate(variable_names)}
 
@@ -203,15 +225,63 @@ class TroposhpereLightningModule(LightningModule):
                 inputs, model_outputs_dict
             )
 
-            # Physics loss from residuals
+            # === Regional physics residuals ===
+            # Extract latitude for regional binning (column 1 is latitude)
+            lat = inputs[:, 1]
+            abs_lat = torch.abs(lat)
+
+            # Regional masks
+            tropical_mask = abs_lat < 30
+            midlat_mask = (abs_lat >= 30) & (abs_lat < 60)
+            polar_mask = abs_lat >= 60
+
+            # Helper function to compute regional physics loss
+            def compute_regional_physics(mask):
+                if mask.any():
+                    return (
+                        ns_longitude[mask].pow(2).mean() + 
+                        ns_latitude[mask].pow(2).mean() + 
+                        mass_cont[mask].pow(2).mean()
+                    )
+                else:
+                    # Return zero on same device if no samples in region
+                    return torch.tensor(0.0, device=inputs.device, dtype=torch.float32)
+            
+            physics_tropical = compute_regional_physics(tropical_mask)
+            physics_midlat = compute_regional_physics(midlat_mask)
+            physics_polar = compute_regional_physics(polar_mask)
+
+            # Physics loss from residuals (global)
             physics_loss = ns_longitude.pow(2).mean() + ns_latitude.pow(2).mean() + mass_cont.pow(2).mean()
 
             total_loss = ((1 - self.physics_loss_weight) * data_loss) + (self.physics_loss_weight * physics_loss)
 
             # Ensure loss is Float32 to match model parameters
-            return total_loss.float(), data_loss.float(), physics_loss.float(), mass_cont.float(), ns_longitude.float(), ns_latitude.float()
+            return (
+                total_loss.float(), 
+                data_loss.float(), 
+                physics_loss.float(), 
+                mass_cont.float(), 
+                ns_longitude.float(), 
+                ns_latitude.float(),
+                mse_t.float(),
+                mse_w.float(),
+                mse_u.float(),
+                mse_z.float(),
+                mse_v.float(),
+                physics_tropical.float(),
+                physics_midlat.float(),
+                physics_polar.float()
+            )
 
-        return data_loss.float()
+        return (
+            data_loss.float(),
+            mse_t.float(),
+            mse_w.float(),
+            mse_u.float(),
+            mse_z.float(),
+            mse_v.float()
+            )
 
 
 
@@ -227,7 +297,9 @@ class TroposhpereLightningModule(LightningModule):
         :return: A tensor of losses between model predictions and targets.
         """
         if self.train_pinn:
-            total_loss, data_loss, physics_loss, mass_cont, ns_longitude, ns_latitude = self.model_step(batch)
+            (total_loss, data_loss, physics_loss, mass_cont, ns_longitude, ns_latitude,
+            mse_t, mse_w, mse_u, mse_z, mse_v,
+            physics_tropical, physics_midlat, physics_polar) = self.model_step(batch)
 
             # update and log metrics
             self.train_loss(total_loss)
@@ -244,21 +316,78 @@ class TroposhpereLightningModule(LightningModule):
             self.log("train_ns_longitude", self.train_ns_longitude, on_epoch=True, on_step=True)
             self.log("train_ns_latitude", self.train_ns_latitude, on_epoch=True, on_step=True)
 
+            # Per-variable MSE
+            self.train_mse_t(mse_t)
+            self.train_mse_w(mse_w)
+            self.train_mse_u(mse_u)
+            self.train_mse_z(mse_z)
+            self.train_mse_v(mse_v)
+
+            self.log("train_mse_t", self.train_mse_t, on_epoch=True, on_step=False)
+            self.log("train_mse_w", self.train_mse_w, on_epoch=True, on_step=False)
+            self.log("train_mse_u", self.train_mse_u, on_epoch=True, on_step=False)
+            self.log("train_mse_z", self.train_mse_z, on_epoch=True, on_step=False)
+            self.log("train_mse_v", self.train_mse_v, on_epoch=True, on_step=False)
+
+            # Regional physics
+            self.train_physics_tropical(physics_tropical)
+            self.train_physics_midlat(physics_midlat)
+            self.train_physics_polar(physics_polar)
+
+            self.log("train_physics_tropical", self.train_physics_tropical, on_epoch=True, on_step=False)
+            self.log("train_physics_midlat", self.train_physics_midlat, on_epoch=True, on_step=False)
+            self.log("train_physics_polar", self.train_physics_polar, on_epoch=True, on_step=False)
+
             return total_loss
 
         else:
-            data_loss = self.model_step(batch)
+            data_loss, mse_t, mse_w, mse_u, mse_z, mse_v = self.model_step(batch)
 
             # update and log metrics
             self.train_loss(data_loss)
             self.log("train_loss", self.train_loss, on_epoch=True, on_step=True)
+
+            # Per-variable MSE
+            self.train_mse_t(mse_t)
+            self.train_mse_w(mse_w)
+            self.train_mse_u(mse_u)
+            self.train_mse_z(mse_z)
+            self.train_mse_v(mse_v)
+
+            self.log("train_mse_t", self.train_mse_t, on_epoch=True, on_step=False)
+            self.log("train_mse_w", self.train_mse_w, on_epoch=True, on_step=False)
+            self.log("train_mse_u", self.train_mse_u, on_epoch=True, on_step=False)
+            self.log("train_mse_z", self.train_mse_z, on_epoch=True, on_step=False)
+            self.log("train_mse_v", self.train_mse_v, on_epoch=True, on_step=False)
 
             return data_loss
 
 
     def on_train_epoch_end(self) -> None:
         "Lightning hook that is called when a training epoch ends."
-        pass
+        # Log loss component ratio (diagnostic for PINN balance)
+        if self.train_pinn and self.train_data_loss.compute() > 0:
+            ratio = self.train_physics_loss.compute() / self.train_data_loss.compute()
+            self.log("train_physics_data_ratio", ratio, on_epoch=True)
+        
+        # Gradient norm monitoring (helps diagnose training instability)
+        if hasattr(self, '_last_grad_norm'):
+            self.log("train_grad_norm", self._last_grad_norm, on_epoch=True)
+
+
+    def on_before_optimizer_step(self, optimizer):
+        """Called before optimizer.step(), gradients are available here."""
+        # Compute gradient norm
+        total_norm = 0.0
+        for p in self.model.parameters():
+            if p.grad is not None:
+                param_norm = p.grad.data.norm(2)
+                total_norm += param_norm.item() ** 2
+        total_norm = total_norm ** 0.5
+    
+        # Log immediately
+        self.log("train/grad_norm", total_norm, on_step=True, on_epoch=False)        
+
 
     def validation_step(self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int) -> None:
         """Perform a single validation step on a batch of data from the validation set."""
@@ -266,8 +395,9 @@ class TroposhpereLightningModule(LightningModule):
         if self.train_pinn:
             # Enable gradients for physics loss computation during validation
             with torch.enable_grad():
-
-                total_loss, data_loss, physics_loss, mass_cont, ns_longitude, ns_latitude = self.model_step(batch)
+                (total_loss, data_loss, physics_loss, mass_cont, ns_longitude, ns_latitude,
+                mse_t, mse_w, mse_u, mse_z, mse_v,
+                physics_tropical, physics_midlat, physics_polar) = self.model_step(batch)
 
             # update and log metrics
             self.val_loss(total_loss)
@@ -284,15 +414,51 @@ class TroposhpereLightningModule(LightningModule):
             self.log("val_ns_longitude", self.val_ns_longitude, on_epoch=True, on_step=True)
             self.log("val_ns_latitude", self.val_ns_latitude, on_epoch=True, on_step=True)
 
+            # Per-variable MSE
+            self.val_mse_t(mse_t)
+            self.val_mse_w(mse_w)
+            self.val_mse_u(mse_u)
+            self.val_mse_z(mse_z)
+            self.val_mse_v(mse_v)
+
+            self.log("val_mse_t", self.val_mse_t, on_epoch=True, on_step=False)
+            self.log("val_mse_w", self.val_mse_w, on_epoch=True, on_step=False)
+            self.log("val_mse_u", self.val_mse_u, on_epoch=True, on_step=False)
+            self.log("val_mse_z", self.val_mse_z, on_epoch=True, on_step=False)
+            self.log("val_mse_v", self.val_mse_v, on_epoch=True, on_step=False)
+
+            # Regional physics
+            self.val_physics_tropical(physics_tropical)
+            self.val_physics_midlat(physics_midlat)
+            self.val_physics_polar(physics_polar)
+
+            self.log("val_physics_tropical", self.val_physics_tropical, on_epoch=True, on_step=False)
+            self.log("val_physics_midlat", self.val_physics_midlat, on_epoch=True, on_step=False)
+            self.log("val_physics_polar", self.val_physics_polar, on_epoch=True, on_step=False)
+
+
             return total_loss
 
         else:
-            data_loss = self.model_step(batch)
+            data_loss, mse_t, mse_w, mse_u, mse_z, mse_v = self.model_step(batch)
 
             # update and log metrics
             self.val_loss(data_loss)
             self.log("val_loss", self.val_loss, on_epoch=True, on_step=True)
 
+            # Per-variable MSE
+            self.val_mse_t(mse_t)
+            self.val_mse_w(mse_w)
+            self.val_mse_u(mse_u)
+            self.val_mse_z(mse_z)
+            self.val_mse_v(mse_v)
+
+            self.log("val_mse_t", self.val_mse_t, on_epoch=True, on_step=False)
+            self.log("val_mse_w", self.val_mse_w, on_epoch=True, on_step=False)
+            self.log("val_mse_u", self.val_mse_u, on_epoch=True, on_step=False)
+            self.log("val_mse_z", self.val_mse_z, on_epoch=True, on_step=False)
+            self.log("val_mse_v", self.val_mse_v, on_epoch=True, on_step=False)
+            
             return data_loss
 
     def on_validation_epoch_end(self) -> None:
@@ -305,7 +471,7 @@ class TroposhpereLightningModule(LightningModule):
         self.log("val_loss_epoch", val_loss, prog_bar=True)
         self.log("val_loss_best", self.val_best.compute(), prog_bar=True)
 
-
+    
 
     def test_step(self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int) -> None:
         """Perform a single test step on a batch of data from the test set.
