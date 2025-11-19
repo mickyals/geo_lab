@@ -233,7 +233,7 @@ class ERA5MultiDataset(Dataset):
                  include_virtual,
                  variables,
                  pi_scale):
-        self.data = data
+        self.data = data[indices]
         self.statistics = statistics
         self.idx = indices
         self.include_virtual = include_virtual
