@@ -15,10 +15,14 @@ class AtmosphericVisualizationCallback(Callback):
     
     def __init__(
         self,
-        plot_every_n_epochs: int = 5,
+        plot_every_n_epochs: int = 1,
+        plot_every_n_steps: Optional[int] = None,
+        _last_log_step: Optional[int] = None,
         pressure_levels: List[int] = [850, 500, 200],
         meridional_longitudes: List[int] = [0, 180],
-        grid_resolution: int = 2,
+        grid_resolution: dict = {
+            "longitude": 2,
+            "latitude": 2},
         enable_horizontal_slices: bool = True,
         enable_meridional_slices: bool = True,
         enable_zonal_mean: bool = True,
@@ -58,7 +62,7 @@ class AtmosphericVisualizationCallback(Callback):
             't': 'Temperature (K)',
             'w': 'Vertical Velocity (Pa/s)',
             'u': 'Zonal Wind (m/s)',
-            'z': 'Geopotential Height (m)',
+            'z': 'Geopotential (m)',
             'v': 'Meridional Wind (m/s)'
         }
     

@@ -1,9 +1,12 @@
 visualization:
   _target_: geolab.callbacks.visualization_callback.AtmosphericVisualizationCallback
-  plot_every_n_epochs: 5
+  plot_every_n_epochs: 1
+  plot_every_n_steps: null
   pressure_levels: [850, 500, 200]
-  meridional_longitudes: [0, 180]
-  grid_resolution: 2
+  meridional_longitudes: [-180, 180]
+  grid_resolution:
+    longitude: 0.5 # degrees
+    latitude: 0.5 # degrees
   
   # Enable/disable specific visualizations
   enable_horizontal_slices: true

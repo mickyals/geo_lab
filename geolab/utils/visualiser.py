@@ -163,7 +163,7 @@ def plot_horizontal_slices(
     batch: Dict,
     pressure: int,
     var_names: List[str],
-    grid_resolution: int = 2
+    grid_resolution: dict = {'latitude': 2, 'longitude': 2}
 ) -> Dict[str, plt.Figure]:
     """
     Plot 2D maps of model predictions at a fixed pressure level.
@@ -180,21 +180,21 @@ def plot_horizontal_slices(
     """
     # Create dense regular grid at this pressure level
     # Use timestep=0 or extract from batch if needed
-    grid_coords = _create_horizontal_grid(
+    grid_coords, norm_grid_coords, n_lats, n_lons = _create_horizontal_grid(
         pressure, 
-        timestep=0, 
+        timestep=1.0,
         resolution=grid_resolution,
         device=model.device
     )
+
+
     
     # Get model predictions on dense grid
-    preds = model(grid_coords)
+    preds = model(norm_grid_coords)
     
     # Create figures for each variable
     figures = {}
-    
-    n_lats = 180 // grid_resolution
-    n_lons = 360 // grid_resolution
+
     
     for i, var_name in enumerate(var_names):
         pred_field = preds[:, i].reshape(n_lats, n_lons).cpu().numpy()
@@ -213,7 +213,7 @@ def plot_meridional_slices(
     longitude: int,
     var_names: List[str],
     pressure_levels: List[int],
-    grid_resolution: int = 2
+    grid_resolution: dict = {'latitude': 2, 'longitude': 2}
 ) -> Dict[str, plt.Figure]:
     """
     Plot vertical cross-sections along a meridian (lat-pressure slice).
@@ -230,7 +230,7 @@ def plot_meridional_slices(
         Dictionary mapping variable names to figures
     """
     # Create lat-pressure grid at fixed longitude
-    grid_coords = _create_meridional_grid(
+    grid_coords, norm_grid_coords, n_lats = _create_meridional_grid(
         longitude,
         pressure_levels,
         timestep=0,
@@ -239,12 +239,11 @@ def plot_meridional_slices(
     )
     
     # Get model predictions
-    preds = model(grid_coords)
+    preds = model(norm_grid_coords)
     
     # Create figures for each variable
     figures = {}
-    
-    n_lats = 180 // grid_resolution
+
     n_pressure = len(pressure_levels)
     
     for i, var_name in enumerate(var_names):
@@ -263,7 +262,7 @@ def plot_zonal_mean(
     batch: Dict,
     var_names: List[str],
     pressure_levels: List[int],
-    grid_resolution: int = 2
+    grid_resolution: dict = {'latitude': 2, 'longitude': 2}
 ) -> Dict[str, plt.Figure]:
     """
     Plot zonal mean (longitude-averaged) profiles.
@@ -279,7 +278,7 @@ def plot_zonal_mean(
         Dictionary mapping variable names to figures
     """
     # Create full lat-lon-pressure grid
-    grid_coords = _create_full_grid(
+    grid_coords, norm_grid_coords, n_lats, n_lons, n_pressure = _create_full_grid(
         pressure_levels,
         timestep=0,
         resolution=grid_resolution,
@@ -287,12 +286,10 @@ def plot_zonal_mean(
     )
     
     # Get model predictions
-    preds = model(grid_coords)
+    preds = model(norm_grid_coords)
     
-    # Reshape to [n_lats, n_lons, n_pressure]
-    n_lats = 180 // grid_resolution
-    n_lons = 360 // grid_resolution
-    n_pressure = len(pressure_levels)
+
+
     
     figures = {}
     
@@ -334,8 +331,8 @@ def _extract_targets_from_batch(batch: Dict) -> torch.Tensor:
 
 def _create_horizontal_grid(
     pressure: int,
-    timestep: int = 0,
-    resolution: int = 2,
+    timestep: int = 1.0,
+    resolution: dict = {'longitude': 2, 'latitude': 2},
     device: torch.device = None
 ) -> torch.Tensor:
     """
@@ -350,8 +347,11 @@ def _create_horizontal_grid(
     Returns:
         Tensor of shape [n_points, 4] with [lon, lat, pressure, time]
     """
-    lons = torch.arange(-180, 180, resolution, dtype=torch.float32)
-    lats = torch.arange(-90, 90, resolution, dtype=torch.float32)
+    lons = torch.arange(-180, 180, resolution['longitude'], dtype=torch.float32)
+    lats = torch.arange(-90, 90+resolution['latitude'], resolution['latitude'], dtype=torch.float32)
+
+    n_lats = lats.numel()
+    n_lons = lons.numel()
     
     lon_grid, lat_grid = torch.meshgrid(lons, lats, indexing='xy')
     
@@ -361,18 +361,24 @@ def _create_horizontal_grid(
     grid[:, 1] = lat_grid.flatten()
     grid[:, 2] = pressure
     grid[:, 3] = timestep
+
+    norm_grid = torch.zeros(n_points, 4)
+    norm_grid[:, 0] = 2.0 * (grid[:, 0] - (-180)) / (180 - (-180)) - 1.0
+    norm_grid[:, 1] = 2.0 * (grid[:, 1] - (-90)) / (90 - (-90)) - 1.0
+    norm_grid[:, 2] = 2.0 * (grid[:, 2] - 850) / (850 - 200) - 1.0
+    norm_grid[:, 3] = 1.0
     
     if device is not None:
-        grid = grid.to(device)
+        norm_grid = norm_grid.to(device)
     
-    return grid
+    return grid, norm_grid, n_lats, n_lons
 
 
 def _create_meridional_grid(
     longitude: int,
     pressure_levels: List[int],
     timestep: int = 0,
-    resolution: int = 2,
+    resolution: dict = {'latitude': 2, 'longitude': 2},
     device: torch.device = None
 ) -> torch.Tensor:
     """
@@ -388,7 +394,8 @@ def _create_meridional_grid(
     Returns:
         Tensor of shape [n_points, 4] with [lon, lat, pressure, time]
     """
-    lats = torch.arange(-90, 90, resolution, dtype=torch.float32)
+    lats = torch.arange(-90, 90+resolution['latitude'], resolution['latitude'], dtype=torch.float32)
+    n_lats = lats.numel()
     pressures = torch.tensor(pressure_levels, dtype=torch.float32)
     
     lat_grid, pressure_grid = torch.meshgrid(lats, pressures, indexing='xy')
@@ -399,17 +406,23 @@ def _create_meridional_grid(
     grid[:, 1] = lat_grid.flatten()
     grid[:, 2] = pressure_grid.flatten()
     grid[:, 3] = timestep
+
+    norm_grid = torch.zeros(n_points, 4)
+    norm_grid[:, 0] = 2.0 * (grid[:, 0] - (-180)) / (180 - (-180)) - 1.0
+    norm_grid[:, 1] = 2.0 * (grid[:, 1] - (-90)) / (90 - (-90)) - 1.0
+    norm_grid[:, 2] = 2.0 * (grid[:, 2] - 850) / (850 - 200) - 1.0
+    norm_grid[:, 3] = 1.0
     
     if device is not None:
-        grid = grid.to(device)
+        norm_grid = norm_grid.to(device)
     
-    return grid
+    return grid, norm_grid, n_lats
 
 
 def _create_full_grid(
     pressure_levels: List[int],
     timestep: int = 0,
-    resolution: int = 2,
+    resolution: dict = {'latitude': 2, 'longitude': 2},
     device: torch.device = None
 ) -> torch.Tensor:
     """
@@ -424,9 +437,13 @@ def _create_full_grid(
     Returns:
         Tensor of shape [n_points, 4] with [lon, lat, pressure, time]
     """
-    lons = torch.arange(-180, 180, resolution, dtype=torch.float32)
-    lats = torch.arange(-90, 90, resolution, dtype=torch.float32)
+    lons = torch.arange(-180, 180, resolution['longitude'], dtype=torch.float32)
+    lats = torch.arange(-90, 90+resolution['latitude'], resolution['latitude'], dtype=torch.float32)
     pressures = torch.tensor(pressure_levels, dtype=torch.float32)
+
+    n_lons = lons.numel()
+    n_lats = lats.numel()
+    n_pressures = pressures.numel()
     
     lon_grid, lat_grid, pressure_grid = torch.meshgrid(lons, lats, pressures, indexing='xy')
     
@@ -436,11 +453,17 @@ def _create_full_grid(
     grid[:, 1] = lat_grid.flatten()
     grid[:, 2] = pressure_grid.flatten()
     grid[:, 3] = timestep
+
+    norm_grid = torch.zeros(n_points, 4)
+    norm_grid[:, 0] = 2.0 * (grid[:, 0] - (-180)) / (180 - (-180)) - 1.0
+    norm_grid[:, 1] = 2.0 * (grid[:, 1] - (-90)) / (90 - (-90)) - 1.0
+    norm_grid[:, 2] = 2.0 * (grid[:, 2] - 850) / (850 - 200) - 1.0
+    norm_grid[:, 3] = 1.0
     
     if device is not None:
-        grid = grid.to(device)
+        norm_grid = norm_grid.to(device)
     
-    return grid
+    return grid, norm_grid, n_lats, n_lons, n_pressures
 
 
 def _create_horizontal_plot(
@@ -481,12 +504,12 @@ def _create_meridional_plot(
     var_name: str,
     longitude: int,
     pressure_levels: List[int],
-    resolution: int
+    resolution: dict
 ) -> plt.Figure:
     """Create meridional cross-section plot."""
     fig, ax = plt.subplots(1, 1, figsize=(10, 6))
     
-    lats = np.arange(-90, 90, resolution)
+    lats = np.arange(-90, 90+resolution['latitude'], resolution['latitude'])
     pressures = np.array(pressure_levels)
     
     # Determine colormap
@@ -515,12 +538,12 @@ def _create_zonal_mean_plot(
     pred_zonal: np.ndarray,
     var_name: str,
     pressure_levels: List[int],
-    resolution: int
+    resolution: dict
 ) -> plt.Figure:
     """Create zonal mean plot."""
     fig, ax = plt.subplots(1, 1, figsize=(10, 6))
     
-    lats = np.arange(-90, 90, resolution)
+    lats = np.arange(-90, 90+resolution['latitude'], resolution['latitude'])
     pressures = np.array(pressure_levels)
     
     # Determine colormap
@@ -555,3 +578,5 @@ def _get_var_label(var_name: str) -> str:
         'v': 'Meridional Wind (m/s)'
     }
     return labels.get(var_name, var_name)
+
+

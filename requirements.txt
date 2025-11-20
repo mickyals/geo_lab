@@ -5,6 +5,8 @@ zarr
 numcodecs[pcodec]==0.15.1
 dask
 jupyter
+matplotlib
+cartopy
 
 
 # --------- pytorch --------- #

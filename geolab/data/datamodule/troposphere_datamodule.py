@@ -31,6 +31,7 @@ class TroposphereDataModule(LightningDataModule):
             pi_scale: bool = True,
             num_workers: int = 4,
             pin_memory: bool = True,
+            persistent_workers: bool = False,
     ):
         """Initialize a TroposphereDataModule.
 
@@ -67,6 +68,7 @@ class TroposphereDataModule(LightningDataModule):
         self.val_split = val_split
         self.num_workers = num_workers
         self.pin_memory = pin_memory
+        self.persistent_workers = persistent_workers
 
         # Dataset attributes
         self.train_dataset = None
@@ -137,9 +139,14 @@ class TroposphereDataModule(LightningDataModule):
         self.statistics = statistics
         self.full_data = data['data']
 
-        total_points = data['count'][0]
-        real_points = data['count'][1]
-        virtual_points = data['count'][2]
+        if self.include_virtual:
+            total_points = data['count'][0]
+            real_points = data['count'][1]
+            virtual_points = data['count'][2]
+        else:
+            real_points = data['count'][0]
+            total_points = real_points
+            virtual_points = 0
 
         print(f"Total={total_points}, Real={real_points}, Virtual={virtual_points}")
 
@@ -210,7 +217,7 @@ class TroposphereDataModule(LightningDataModule):
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
             shuffle=True,
-            persistent_workers=True,
+            persistent_workers=self.persistent_workers,
         )
 
     def val_dataloader(self):
@@ -220,7 +227,7 @@ class TroposphereDataModule(LightningDataModule):
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
             shuffle=False,
-            persistent_workers=True,
+            persistent_workers=self.persistent_workers,
         )
 
     def test_dataloader(self):

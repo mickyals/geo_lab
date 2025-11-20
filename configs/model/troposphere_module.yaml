@@ -29,5 +29,5 @@ scheduler_config:
   factor: 0.5
 
 # Physics-informed neural network settings
-train_pinn: true
+train_pinn: false
 physics_loss_weight: 0.99

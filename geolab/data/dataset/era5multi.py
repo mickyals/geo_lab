@@ -257,9 +257,9 @@ class ERA5MultiDataset(Dataset):
         # --------------------
         # Normalize coordinates
         # --------------------
-        # Time to [-1, 1]
+        # Time to [0, 1]
         t_min, t_max = self.statistics['valid_time'][0], self.statistics['valid_time'][1]
-        time_norm = 2 * self.time_delta_normalised(t_min, t_max, time_raw) - 1  # [-1, 1]
+        time_norm =  self.time_delta_normalised(t_min, t_max, time_raw)  # [-1, 1]
 
         # Latitude to [-1, 1] then scale [-pi/2, pi/2]
         lat_min, lat_max = self.statistics['latitude'][0], self.statistics['latitude'][1]
