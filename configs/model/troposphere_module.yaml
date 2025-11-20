@@ -12,8 +12,8 @@ scale: 10.0 # scale for positional encoding
 
 # Model-specific parameters for SirenNet change for specific model
 model_params:
-  first_omega: 10.0
-  hidden_omega: 10.0
+  first_omega: 30.0
+  hidden_omega: 30.0
 
 # Optimizer configuration
 optimizer_name: Adam

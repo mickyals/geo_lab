@@ -21,7 +21,7 @@ model:
   physics_loss_weight: 0.0
 
 trainer:
-  max_epochs: 10
+  max_epochs: 40
 
 logger:
   wandb:
