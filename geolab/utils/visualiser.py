@@ -353,7 +353,7 @@ def _create_horizontal_grid(
     n_lats = lats.numel()
     n_lons = lons.numel()
     
-    lon_grid, lat_grid = torch.meshgrid(lons, lats, indexing='xy')
+    lon_grid, lat_grid = torch.meshgrid(lons, lats, indexing='ij')
     
     n_points = lon_grid.numel()
     grid = torch.zeros(n_points, 4)
@@ -398,7 +398,7 @@ def _create_meridional_grid(
     n_lats = lats.numel()
     pressures = torch.tensor(pressure_levels, dtype=torch.float32)
     
-    lat_grid, pressure_grid = torch.meshgrid(lats, pressures, indexing='xy')
+    lat_grid, pressure_grid = torch.meshgrid(lats, pressures, indexing='ij')
     
     n_points = lat_grid.numel()
     grid = torch.zeros(n_points, 4)
@@ -445,7 +445,7 @@ def _create_full_grid(
     n_lats = lats.numel()
     n_pressures = pressures.numel()
     
-    lon_grid, lat_grid, pressure_grid = torch.meshgrid(lons, lats, pressures, indexing='xy')
+    lon_grid, lat_grid, pressure_grid = torch.meshgrid(lons, lats, pressures, indexing='ij')
     
     n_points = lon_grid.numel()
     grid = torch.zeros(n_points, 4)

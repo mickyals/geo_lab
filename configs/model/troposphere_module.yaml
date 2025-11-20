@@ -18,7 +18,7 @@ model_params:
 # Optimizer configuration
 optimizer_name: Adam
 optimizer_config:
-  lr: 1e-4
+  lr: 1e-3
   weight_decay: 1e-5
 
 # Scheduler configuration
@@ -26,7 +26,7 @@ scheduler_name: ReduceLROnPlateau # CosineAnnealingLR CosineAnnealingWarmRestart
 scheduler_config:
   mode: min
   patience: 3
-  factor: 0.5
+  factor: 0.1
 
 # Physics-informed neural network settings
 train_pinn: false

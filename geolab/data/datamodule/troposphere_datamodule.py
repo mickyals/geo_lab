@@ -214,10 +214,12 @@ class TroposphereDataModule(LightningDataModule):
         return DataLoader(
             dataset=self.train_dataset,
             batch_size=self.batch_size,
+            prefetch_factor=8,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
             shuffle=True,
             persistent_workers=self.persistent_workers,
+            drop_last=True
         )
 
     def val_dataloader(self):
@@ -231,7 +233,7 @@ class TroposphereDataModule(LightningDataModule):
         )
 
     def test_dataloader(self):
-        pass
+        return None
         #return None #DataLoader(
         #     dataset=self.test_dataset,
         #     batch_size=self.batch_size,
