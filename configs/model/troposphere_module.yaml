@@ -18,13 +18,13 @@ model_params:
 # Optimizer configuration
 optimizer_name: Adam
 optimizer_config:
-  lr: 1e-3
+  lr: 1e-4
   weight_decay: 1e-5
 
 # Scheduler configuration
-scheduler_name: ReduceLROnPlateau # CosineAnnealingLR CosineAnnealingWarmRestarts
+scheduler_name: null # CosineAnnealingLR #ReduceLROnPlateau # CosineAnnealingLR CosineAnnealingWarmRestarts
 scheduler_config:
-  mode: min
+  T_max: min
   patience: 3
   factor: 0.1
 

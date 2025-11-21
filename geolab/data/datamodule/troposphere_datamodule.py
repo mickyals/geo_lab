@@ -214,7 +214,7 @@ class TroposphereDataModule(LightningDataModule):
         return DataLoader(
             dataset=self.train_dataset,
             batch_size=self.batch_size,
-            prefetch_factor=8,
+            prefetch_factor=1,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
             shuffle=True,

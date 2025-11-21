@@ -57,12 +57,12 @@ def plot_error_heatmap(
         # Bin errors spatially
         H, xedges, yedges = np.histogram2d(
             lons, lats,
-            bins=[72, 36],  # 5° bins
+            bins=[380, 190],  # 5° bins
             weights=errors[:, i].cpu().numpy()
         )
         
         # Normalize counts to get mean error per bin
-        counts, _, _ = np.histogram2d(lons, lats, bins=[72, 36])
+        counts, _, _ = np.histogram2d(lons, lats, bins=[380, 190])
         H = np.divide(H, counts, where=counts > 0, out=np.zeros_like(H))
         
         # Plot heatmap
@@ -197,7 +197,7 @@ def plot_horizontal_slices(
 
     
     for i, var_name in enumerate(var_names):
-        pred_field = preds[:, i].reshape(n_lats, n_lons).cpu().numpy()
+        pred_field = preds[:, i].reshape(n_lons, n_lats).cpu().numpy()
         
         fig = _create_horizontal_plot(
             pred_field, var_name, pressure
@@ -294,10 +294,10 @@ def plot_zonal_mean(
     figures = {}
     
     for i, var_name in enumerate(var_names):
-        pred_field = preds[:, i].reshape(n_lats, n_lons, n_pressure).cpu().numpy()
+        pred_field = preds[:, i].reshape(n_lons, n_lats, n_pressure).cpu().numpy()
         
         # Zonal mean (average over longitude dimension)
-        pred_zonal = pred_field.mean(axis=1)  # [n_lats, n_pressure]
+        pred_zonal = pred_field.mean(axis=0)  # [n_lats, n_pressure]
         
         fig = _create_zonal_mean_plot(
             pred_zonal, var_name, pressure_levels, grid_resolution
@@ -486,7 +486,7 @@ def _create_horizontal_plot(
         vmin, vmax = None, None
     
     im = ax.imshow(
-        pred_field, origin='lower', extent=extent,
+        pred_field.T, origin='lower', extent=extent,
         cmap=cmap, aspect='auto', vmin=vmin, vmax=vmax
     )
     ax.set_title(f'{var_name.upper()} @ {pressure} hPa')

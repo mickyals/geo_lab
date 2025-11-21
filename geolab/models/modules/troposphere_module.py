@@ -375,6 +375,7 @@ class TroposhpereLightningModule(LightningModule):
             self.log("train_grad_norm", self._last_grad_norm, on_epoch=True)
 
 
+
     def on_before_optimizer_step(self, optimizer):
         """Called before optimizer.step(), gradients are available here."""
         # Compute gradient norm
@@ -470,6 +471,8 @@ class TroposhpereLightningModule(LightningModule):
         # Log both current and best validation losses
         self.log("val_loss_epoch", val_loss, prog_bar=True)
         self.log("val_loss_best", self.val_best.compute(), prog_bar=True)
+
+
 
     
 
