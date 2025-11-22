@@ -189,7 +189,7 @@ def plot_horizontal_slices(
     # Create dense regular grid at this pressure level
     grid_coords, norm_grid_coords, n_lats, n_lons = _create_horizontal_grid(
         pressure, 
-        timestep=0.5,  # Middle of normalized time range [0, 1]
+        timestep=0,  # Middle of normalized time range [0, 1]
         resolution=grid_resolution,
         device=model.device,
         statistics=statistics,
@@ -251,7 +251,7 @@ def plot_meridional_slices(
     grid_coords, norm_grid_coords, n_lats = _create_meridional_grid(
         longitude,
         pressure_levels,
-        timestep=0.5,
+        timestep=0,
         resolution=grid_resolution,
         device=model.device,
         statistics=statistics,
@@ -311,7 +311,7 @@ def plot_zonal_mean(
     # Create full lat-lon-pressure grid
     grid_coords, norm_grid_coords, n_lats, n_lons, n_pressure = _create_full_grid(
         pressure_levels,
-        timestep=0.5,
+        timestep=0,
         resolution=grid_resolution,
         device=model.device,
         statistics=statistics,
@@ -361,7 +361,7 @@ def _extract_targets_from_batch(batch: Dict) -> torch.Tensor:
 
 def _create_horizontal_grid(
     pressure: int,
-    timestep: float = 0.5,
+    timestep: float = 0,
     resolution: Optional[dict] = None,
     device: torch.device = None,
     statistics: dict = None,
@@ -372,7 +372,7 @@ def _create_horizontal_grid(
     
     Args:
         pressure: Pressure level in hPa
-        timestep: Time value in [0, 1] range (default 0.5 = middle)
+        timestep: Time value in [0, 1] range 
         resolution: Grid resolution in degrees
         device: Device to create tensor on
         statistics: Statistics dict from training data
@@ -436,7 +436,7 @@ def _create_horizontal_grid(
 def _create_meridional_grid(
     longitude: int,
     pressure_levels: List[int],
-    timestep: float = 0.5,
+    timestep: float = 0,
     resolution: Optional[dict] = None,
     device: torch.device = None,
     statistics: dict = None,
@@ -509,7 +509,7 @@ def _create_meridional_grid(
 
 def _create_full_grid(
     pressure_levels: List[int],
-    timestep: float = 0.5,
+    timestep: float = 0,
     resolution: Optional[dict] = None,
     device: torch.device = None,
     statistics: dict = None,
