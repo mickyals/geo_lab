@@ -1,0 +1,24 @@
+task_name: mlp_baseline_1timeslice
+tags:
+- mlp_baseline
+- 1_timeslice
+- no_physics
+data:
+  time_idx_range:
+  - 0
+  - 2
+  val_split: 0.1
+  test_split: 0.15
+  num_virtual: 0
+  include_virtual: false
+model:
+  model_name: FCN
+  activation: relu
+  train_pinn: false
+  physics_loss_weight: 0.0
+trainer:
+  max_epochs: 40
+logger:
+  wandb:
+    name: mlp_1timeslice
+    group: mlp_baseline

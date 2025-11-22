@@ -65,6 +65,8 @@ class TroposhpereLightningModule(LightningModule):
         # Train PINN
         train_pinn: bool,
         physics_loss_weight: float=None,
+        statistics: Dict[str, list] = None,
+        pi_scale: bool = False,
     ) -> None:
         """Initialize a `ERA5LightningModule`.
 
@@ -79,6 +81,9 @@ class TroposhpereLightningModule(LightningModule):
         self.save_hyperparameters()
         self.train_pinn = train_pinn
         self.physics_loss_weight = physics_loss_weight
+
+        self.statistics = statistics
+        self.pi_scale = pi_scale
 
         self.model = self._init_model()
 

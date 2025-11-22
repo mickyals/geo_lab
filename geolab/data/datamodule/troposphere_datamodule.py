@@ -75,6 +75,8 @@ class TroposphereDataModule(LightningDataModule):
         self.val_dataset = None
         self.test_dataset = None
         self.era5_data = None
+        self.statistics = None
+        self.full_data = None
 
     def prepare_data(self):
         """Download or load ERA5 data if needed.
@@ -214,7 +216,7 @@ class TroposphereDataModule(LightningDataModule):
         return DataLoader(
             dataset=self.train_dataset,
             batch_size=self.batch_size,
-            prefetch_factor=8,
+            prefetch_factor=2,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
             shuffle=True,

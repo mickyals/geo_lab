@@ -20,9 +20,7 @@ class AtmosphericVisualizationCallback(Callback):
         _last_log_step: Optional[int] = None,
         pressure_levels: List[int] = [850, 500, 200],
         meridional_longitudes: List[int] = [0, 180],
-        grid_resolution: dict = {
-            "longitude": 2,
-            "latitude": 2},
+        grid_resolution: Optional[dict] = None,
         enable_horizontal_slices: bool = True,
         enable_meridional_slices: bool = True,
         enable_zonal_mean: bool = True,
@@ -44,6 +42,9 @@ class AtmosphericVisualizationCallback(Callback):
             enable_physics_residuals: Whether to plot physics residual maps (PINN only)
         """
         super().__init__()
+        if grid_resolution is None:
+            grid_resolution = {"longitude": 2, "latitude": 2}
+            
         self.plot_every_n_epochs = plot_every_n_epochs
         self.pressure_levels = pressure_levels
         self.meridional_longitudes = meridional_longitudes
@@ -64,7 +65,7 @@ class AtmosphericVisualizationCallback(Callback):
             'u': 'Zonal Wind (m/s)',
             'z': 'Geopotential (m)',
             'v': 'Meridional Wind (m/s)'
-        }
+        }        
     
     def on_validation_epoch_end(self, trainer, pl_module):
         """Called when validation epoch ends."""
@@ -72,6 +73,12 @@ class AtmosphericVisualizationCallback(Callback):
         if trainer.current_epoch % self.plot_every_n_epochs != 0:
             return
         if not trainer.is_global_zero:
+            return
+        
+        # Verify model has statistics
+        if not hasattr(pl_module, 'statistics') or pl_module.statistics is None:
+            print("WARNING: Model does not have statistics! Cannot create visualizations.")
+            print("Make sure to set model.statistics in train.py before training starts.")
             return
         
         # Get wandb logger
