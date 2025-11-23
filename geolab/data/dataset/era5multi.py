@@ -21,16 +21,19 @@ class ERA5MultiData:
             ]
 
             # Enforce canonical tuple: (data, size, shape, dtype)
-            self.coordinates = {
-                c: (
-                    ds.coords[c].data.astype(np.float32),
-                    ds.coords[c].data.size,
-                    ds.coords[c].data.shape,
-                    str(ds.coords[c].dtype),
-                )
-                for c in coords_to_keep
-                if c in ds.coords
-            }
+            self.coordinates = {}
+            for c in coords_to_keep:
+                if c in ds.coords:
+                    coord_data = ds.coords[c].data.astype(np.float32)
+
+                    if c == "longitude":
+                        coord_data = (coord_data + 180) % 360 - 180
+                    self.coordinates[c] = (
+                        coord_data,
+                        coord_data.size,
+                        coord_data.shape,
+                        str(coord_data.dtype)
+                    )
 
             self.variables = {
                 v: (

@@ -11,13 +11,8 @@ num_virtual: 1000000  # Number of virtual points
 include_virtual: false
 use_lhs: true  # Use Latin Hypercube Sampling
 pi_scale: false  # Scale coordinates
-<<<<<<< HEAD
-batch_size: 32768
-num_workers: 2  # Number of workers for data loading
-=======
 batch_size: 90000
-num_workers: 8  # Number of workers for data loading
->>>>>>> 1c5ce68 (minor code updates for visualise)
+num_workers: 2  # Number of workers for data loading
 persistent_workers: true
 pin_memory: true  # Use seed from experiment config
 

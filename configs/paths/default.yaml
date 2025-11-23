@@ -4,7 +4,7 @@
 root_dir: ${oc.env:PROJECT_ROOT}
 
 # path to data directory - update this to your actual data location
-data_dir: C:\Users\freez\Downloads\dfda178b22d3772b9b9b0118dba68a02.nc
+data_dir: C:\Users\micke\Downloads\dfda178b22d3772b9b9b0118dba68a02.nc
 
 # path to logging directory
 log_dir: ${paths.root_dir}/logs/

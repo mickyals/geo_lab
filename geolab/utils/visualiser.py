@@ -189,7 +189,7 @@ def plot_horizontal_slices(
     # Create dense regular grid at this pressure level
     grid_coords, norm_grid_coords, n_lats, n_lons = _create_horizontal_grid(
         pressure, 
-        timestep=0,  # Middle of normalized time range [0, 1]
+        timestep=1.0,  # Middle of normalized time range [0, 1]
         resolution=grid_resolution,
         device=model.device,
         statistics=statistics,
@@ -251,7 +251,7 @@ def plot_meridional_slices(
     grid_coords, norm_grid_coords, n_lats = _create_meridional_grid(
         longitude,
         pressure_levels,
-        timestep=0,
+        timestep=1.0,
         resolution=grid_resolution,
         device=model.device,
         statistics=statistics,
@@ -311,7 +311,7 @@ def plot_zonal_mean(
     # Create full lat-lon-pressure grid
     grid_coords, norm_grid_coords, n_lats, n_lons, n_pressure = _create_full_grid(
         pressure_levels,
-        timestep=0,
+        timestep=1.0,
         resolution=grid_resolution,
         device=model.device,
         statistics=statistics,
@@ -408,21 +408,24 @@ def _create_horizontal_grid(
     norm_grid = torch.zeros(n_points, 4)
     
     # Longitude: normalize to [-1, 1], then optionally scale by π
-    lon_min = statistics['longitude'][0]
-    lon_max = statistics['longitude'][1]
+    lon_min, lon_max = statistics["longitude"][:2]
     norm_grid[:, 0] = 2.0 * (grid[:, 0] - lon_min) / (lon_max - lon_min) - 1.0
     if pi_scale:
         norm_grid[:, 0] = norm_grid[:, 0] * torch.pi
     
     # Latitude: normalize to [-1, 1], then optionally scale by π/2
-    lat_min = statistics['latitude'][0]
-    lat_max = statistics['latitude'][1]
+    lat_min, lat_max = statistics["latitude"][:2]
     norm_grid[:, 1] = 2.0 * (grid[:, 1] - lat_min) / (lat_max - lat_min) - 1.0
     if pi_scale:
         norm_grid[:, 1] = norm_grid[:, 1] * (torch.pi / 2)
     
-    # Pressure: DO NOT NORMALIZE (keep raw value like in training)
-    norm_grid[:, 2] = grid[:, 2]
+    # Pressure:
+    p_min, p_max = statistics["pressure_level"][:2]
+    if p_min == p_max:
+        norm_grid[:, 2] = 1.0
+    else:
+        norm_grid[:, 2] = 2.0 * (grid[:, 2] - p_min) / (p_max - p_min) - 1.0
+
     
     # Time: already in [0, 1] range, use as-is
     norm_grid[:, 3] = timestep
@@ -494,10 +497,14 @@ def _create_meridional_grid(
     norm_grid[:, 1] = 2.0 * (grid[:, 1] - lat_min) / (lat_max - lat_min) - 1.0
     if pi_scale:
         norm_grid[:, 1] = norm_grid[:, 1] * (torch.pi / 2)
-    
-    # Pressure: DO NOT NORMALIZE (keep raw value)
-    norm_grid[:, 2] = grid[:, 2]
-    
+
+    # Pressure:
+    pressure_min = statistics["pressure_level"][0]
+    pressure_max = statistics["pressure_level"][1]
+    if pressure_min == pressure_max:
+        norm_grid[:, 2] = 1.0
+    else:
+        norm_grid[:, 2] = 2.0 * (grid[:, 2] - pressure_min) / (pressure_max - pressure_min) - 1.0
     # Time: already in [0, 1] range
     norm_grid[:, 3] = timestep
     
@@ -570,9 +577,14 @@ def _create_full_grid(
     norm_grid[:, 1] = 2.0 * (grid[:, 1] - lat_min) / (lat_max - lat_min) - 1.0
     if pi_scale:
         norm_grid[:, 1] = norm_grid[:, 1] * (torch.pi / 2)
-    
-    # Pressure: DO NOT NORMALIZE (keep raw value)
-    norm_grid[:, 2] = grid[:, 2]
+
+    # Pressure:
+    pressure_min = statistics["pressure_level"][0]
+    pressure_max = statistics["pressure_level"][1]
+    if pressure_min == pressure_max:
+        norm_grid[:, 2] = 1.0
+    else:
+        norm_grid[:, 2] = 2.0 * (grid[:, 2] - pressure_min) / (pressure_max - pressure_min) - 1.0
     
     # Time: already in [0, 1] range
     norm_grid[:, 3] = timestep
