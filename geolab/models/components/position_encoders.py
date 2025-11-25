@@ -7,21 +7,37 @@ class FourierFeatures(nn.Module):
 
         self.input_dimension = input_dimension
         self.mapping_dimension = mapping_dimension
-        self.scale = nn.Parameter(scale * torch.ones(1), requires_grad=trainable)
-        beta = self._define_beta(type)
+        if isinstance(scale, torch.Tensor):
+            scale_value = scale.item()
+        else:
+            scale_value = float(scale)
+        
+        self.scale = nn.Parameter(
+            torch.tensor([scale_value], dtype=torch.float32), 
+            requires_grad=trainable
+        )
+        
+        beta = self._define_beta(type, scale_value)
         self.register_buffer('beta', beta)  # Register as buffer so it moves with model
 
 
 
-    def _define_beta(self, type):
+    def _define_beta(self, type, scale_value):
         if type == 'gaussian':
-            beta = torch.randn(self.mapping_dimension // 2, self.input_dimension) * self.scale
+            # trying a fixed seed for pickling stability
+            generator = torch.Generator()
+            generator.manual_seed(12345)
+            beta = torch.randn(
+                self.mapping_dimension // 2, 
+                self.input_dimension,
+                generator=generator
+            ) * scale_value
         elif type == 'positional':
             j = torch.arange(self.mapping_dimension // 2, dtype=torch.float32)
-            beta = self.scale ** (j / (self.mapping_dimension // 2))
+            beta = scale_value ** (j / (self.mapping_dimension // 2))
             beta = beta.view(-1, 1).expand(-1, self.input_dimension).contiguous()
         elif type == 'basic':
-            beta = torch.ones(self.mapping_dimension // 2, self.input_dimension)
+            beta = torch.ones(self.mapping_dimension // 2, self.input_dimension) 
         else:
             raise ValueError(f"Unknown type: {type}")
         return beta
