@@ -110,8 +110,10 @@ def plot_physics_residuals(
         model_outputs_dict = {var_names[i]: preds[:, i] for i in range(len(var_names))}
         
         # Compute physics residuals
+        statistics = getattr(model, 'statistics', None)
+        mass_balance = getattr(model, 'mass_balance', True)
         ns_longitude, ns_latitude, mass_cont = troposphere_pde_residual(
-            coords, model_outputs_dict
+            coords, model_outputs_dict, statistics=statistics, mass_balance=mass_balance
         )
     
     # Extract coordinates (detached for plotting)

@@ -64,6 +64,7 @@ class TroposhpereLightningModule(LightningModule):
         scheduler_config,
         # Train PINN
         train_pinn: bool,
+        mass_balance: bool,
         physics_loss_weight: float=None,
         statistics: Dict[str, list] = None,
         pi_scale: bool = False,
@@ -80,6 +81,7 @@ class TroposhpereLightningModule(LightningModule):
         # also ensures init params will be stored in ckpt
         self.save_hyperparameters()
         self.train_pinn = train_pinn
+        self.mass_balance = mass_balance
         self.physics_loss_weight = physics_loss_weight
 
         self.statistics = statistics
@@ -227,7 +229,7 @@ class TroposhpereLightningModule(LightningModule):
 
             # Compute physics residuals
             ns_longitude, ns_latitude, mass_cont = troposphere_pde_residual(
-                inputs, model_outputs_dict
+                inputs_tensor=inputs, outputs=model_outputs_dict, statistics=self.statistics, mass_balance=self.mass_balance
             )
 
             # === Regional physics residuals ===
@@ -235,7 +237,7 @@ class TroposhpereLightningModule(LightningModule):
             lat = inputs[:, 1]
             abs_lat = torch.abs(lat)
 
-            # Regional masks
+            # Regional masks - THESE MAY NEED TO BE NORMALISED
             tropical_mask = abs_lat < 30
             midlat_mask = (abs_lat >= 30) & (abs_lat < 60)
             polar_mask = abs_lat >= 60

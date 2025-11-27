@@ -12,5 +12,5 @@ wandb:
   prefix: "" # a string to put at the beginning of metric keys
   entity: "mickell-als10-tco" # TODO: Replace with your W&B username or team name
   group: ""
-  tags: ["non_valid", "updated_siren", "bug-fixing-and-mlp-experiments", "updated_dataset_code"]  # Tags to organize your runs
+  tags: ["valid", "batch_1024", "siren", "epoch_100", "pinn_on", "scaling_pinn"]  # Tags to organize your runs
   job_type: ""

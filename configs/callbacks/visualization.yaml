@@ -5,8 +5,8 @@ visualization:
   pressure_levels: [850, 500, 200]
   meridional_longitudes: [-180, 180]
   grid_resolution:
-    longitude: 0.5 # degrees
-    latitude: 0.5 # degrees
+    longitude: 0.25 # degrees
+    latitude: 0.25 # degrees
   
   # Enable/disable specific visualizations
   enable_horizontal_slices: true
