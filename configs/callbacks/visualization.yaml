@@ -14,3 +14,4 @@ visualization:
   enable_zonal_mean: true
   enable_error_heatmap: true
   enable_physics_residuals: true  # Only runs if train_pinn=true
+  enable_physics_loss_comparison: true  # Only runs if train_pinn=true

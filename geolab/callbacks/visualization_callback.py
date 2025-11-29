@@ -26,6 +26,7 @@ class AtmosphericVisualizationCallback(Callback):
         enable_zonal_mean: bool = True,
         enable_error_heatmap: bool = True,
         enable_physics_residuals: bool = True,
+        enable_physics_loss_comparison: bool = True,
     ):
         """
         Initialize the visualization callback.
@@ -56,6 +57,7 @@ class AtmosphericVisualizationCallback(Callback):
         self.enable_zonal_mean = enable_zonal_mean
         self.enable_error_heatmap = enable_error_heatmap
         self.enable_physics_residuals = enable_physics_residuals
+        self.enable_physics_loss_comparison = enable_physics_loss_comparison
         
         # Variable names matching model output order: ['t', 'w', 'u', 'z', 'v']
         self.var_names = ['t', 'w', 'u', 'z', 'v']
@@ -130,6 +132,12 @@ class AtmosphericVisualizationCallback(Callback):
                 self._plot_and_log_physics_residuals(
                     wandb_logger, pl_module, val_batch
                 )
+
+            # 6. Physics loss comparison (PINN only)
+            if self.enable_physics_loss_comparison and pl_module.train_pinn:
+                self._plot_and_log_physics_loss_comparison(
+                    wandb_logger, pl_module, val_batch
+    )
         
         pl_module.train()
     
@@ -223,6 +231,20 @@ class AtmosphericVisualizationCallback(Callback):
                 plt.close(fig)
         except Exception as e:
             print(f"Error creating physics residuals: {e}")
+
+    def _plot_and_log_physics_loss_comparison(self, logger, pl_module, val_batch):
+        """Plot and log physics loss comparison between predictions and ground truth."""
+        try:
+            fig = visualiser.plot_physics_loss_comparison(
+                pl_module,
+                val_batch,
+                self.var_names
+            )
+            if fig is not None:
+                logger.log_image(key="val/physics_loss_comparison", images=[fig])
+                plt.close(fig)
+        except Exception as e:
+            print(f"Error creating physics loss comparison: {e}")
     
     def _get_wandb_logger(self, trainer) -> Optional[WandbLogger]:
         """Get WandB logger from trainer."""

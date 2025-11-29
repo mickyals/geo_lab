@@ -1,5 +1,6 @@
 from typing import Any, Dict, Optional, Tuple, List
 from pathlib import Path
+import pickle
 
 import numpy as np
 import torch
@@ -32,6 +33,7 @@ class TroposphereDataModule(LightningDataModule):
             num_workers: int = 4,
             pin_memory: bool = True,
             persistent_workers: bool = False,
+            cache_dir: str = None,
     ):
         """Initialize a TroposphereDataModule.
 
@@ -47,6 +49,7 @@ class TroposphereDataModule(LightningDataModule):
             num_workers: Number of workers for the dataloaders
             pin_memory: Whether to pin memory for the dataloaders
             seed: Random seed for reproducibility
+            cache_dir: Directory to cache preprocessed data (default: data_dir/cache)
         """
         super().__init__()
         self.save_hyperparameters()
@@ -70,18 +73,43 @@ class TroposphereDataModule(LightningDataModule):
         self.pin_memory = pin_memory
         self.persistent_workers = persistent_workers
 
+        # Set up cache directory
+        data_path = Path(data_dir)
+        if data_path.is_file() or data_path.suffix:  # If it's a file or has an extension
+            cache_base = data_path.parent  # Use parent directory
+        else:
+            cache_base = data_path  # Use data_dir itself
+            
+        self.cache_dir = Path(cache_dir) if cache_dir else cache_base / "cache"
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Cache file path
+        self.cache_file = self.cache_dir / "preprocessed_data.pkl"
+
         # Dataset attributes
         self.train_dataset = None
         self.val_dataset = None
         self.test_dataset = None
         self.era5_data = None
+        self.full_data = None
+        self.statistics = None
+        
+        # Try to load statistics from cache immediately
+        cached_stats = self._load_statistics()
+        if cached_stats is not None:
+            self.statistics = cached_stats
 
     def prepare_data(self):
         """Download or load ERA5 data if needed.
 
         This method is called only once (on rank 0).
-        Do not assign state (e.g., self.x = y) here that will be needed later.
+        Preprocesses data and saves to disk for later loading.
         """
+        # Skip if cache already exists
+        if self.cache_file.exists():
+            print(f"Cache file already exists at {self.cache_file}, skipping preparation.")
+            return
+
         print("Preparing ERA5 data...")
 
         era5 = ERA5MultiData(
@@ -102,10 +130,37 @@ class TroposphereDataModule(LightningDataModule):
             use_lhs=self.use_lhs
         )
 
-        # Optionally save preprocessed data/statistics to disk
-        # so that setup() can reload quickly without recomputation
-        self._prepared_data = (data, statistics)
-        print("Data prepared successfully.")
+        # Save preprocessed data to disk
+        print(f"Saving preprocessed data to {self.cache_file}...")
+        with open(self.cache_file, 'wb') as f:
+            pickle.dump({'data': data, 'statistics': statistics}, f)
+        
+        print("Data prepared and cached successfully.")
+
+
+    def _load_statistics(self) -> Optional[Dict]:
+        """Load only statistics from cache if available."""
+        if self.cache_file.exists():
+            try:
+                print(f"Loading statistics from {self.cache_file}...")
+                with open(self.cache_file, 'rb') as f:
+                    cached = pickle.load(f)
+                    print(f"Cache loaded successfully. Keys: {cached.keys()}")
+                    stats = cached.get('statistics')
+                    if stats is not None:
+                        print("Statistics loaded successfully!")
+                    else:
+                        print("Warning: 'statistics' key not found in cache")
+                    return stats
+            except Exception as e:
+                print(f"Warning: Could not load statistics from cache: {e}")
+                import traceback
+                traceback.print_exc()
+                return None
+        else:
+            print(f"Cache file does not exist at {self.cache_file}")
+        return None
+
 
     def setup(self, stage: Optional[str] = None):
         """Split data into train/val/test and create datasets."""
@@ -115,11 +170,16 @@ class TroposphereDataModule(LightningDataModule):
 
         print(f"Setting up datasets for stage: {stage}")
 
-        # === Load from prepare_data() output or regenerate if needed ===
-        if hasattr(self, '_prepared_data'):
-            data, statistics = self._prepared_data
+        # Load from cache file
+        if self.cache_file.exists():
+            print(f"Loading preprocessed data from {self.cache_file}...")
+            with open(self.cache_file, 'rb') as f:
+                cached = pickle.load(f)
+                data = cached['data']
+                statistics = cached['statistics']
         else:
-            print("Warning: prepare_data() was not run, loading data directly.")
+            # Fallback: regenerate if cache doesn't exist
+            print("Warning: Cache file not found, regenerating data...")
             era5 = ERA5MultiData(
                 data_dir=str(self.data_dir),
                 read_data_fn=self.read_data_fn,
@@ -214,7 +274,7 @@ class TroposphereDataModule(LightningDataModule):
         return DataLoader(
             dataset=self.train_dataset,
             batch_size=self.batch_size,
-            prefetch_factor=1,
+            prefetch_factor=None,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
             shuffle=True,

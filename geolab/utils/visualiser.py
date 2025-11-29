@@ -356,6 +356,121 @@ def plot_zonal_mean(
     
     return figures
 
+def plot_physics_loss_comparison(
+    model,
+    batch: Dict,
+    var_names: List[str]
+) -> Optional[plt.Figure]:
+    """
+    Plot spatial maps comparing physics loss on predictions vs ground truth.
+    Shows where physics loss is helping (pushing toward ground truth) vs hurting.
+    
+    Interpretation:
+    - Negative values (blue): physics_loss(prediction) < physics_loss(ground_truth)
+      → Physics loss is pushing AWAY from ground truth (BAD)
+    - Positive values (red): physics_loss(prediction) > physics_loss(ground_truth)  
+      → Physics loss is pushing TOWARD ground truth (GOOD)
+    
+    Args:
+        model: Lightning module
+        batch: Validation batch with ground truth
+        var_names: List of variable names
+    
+    Returns:
+        matplotlib Figure or None
+    """
+    from geolab.models.components import troposphere_pde_residual
+    
+    # Extract coordinates and targets
+    coords = _extract_coords_from_batch(batch)
+    targets = _extract_targets_from_batch(batch)
+    
+    # Only use real data points (not virtual points)
+    classification = batch['classification']
+    real_mask = classification.bool()
+    
+    coords_real = coords[real_mask]
+    targets_real = targets[real_mask]
+    
+    # Enable gradients for physics computation
+    coords_real = coords_real.detach().requires_grad_(True)
+    
+    with torch.enable_grad():
+        # Get predictions
+        preds_real = model(coords_real)
+        
+        # Compute physics loss on PREDICTIONS
+        pred_outputs_dict = {var_names[i]: preds_real[:, i] for i in range(len(var_names))}
+        statistics = getattr(model, 'statistics', None)
+        mass_balance = getattr(model, 'mass_balance', True)
+        
+        ns_lon_pred, ns_lat_pred, mass_pred = troposphere_pde_residual(
+            coords_real, pred_outputs_dict, statistics=statistics, mass_balance=mass_balance
+        )
+        physics_loss_pred = ns_lon_pred.pow(2) + ns_lat_pred.pow(2) + mass_pred.pow(2)
+        
+        # Compute physics loss on GROUND TRUTH
+        # Need to detach coords, create new computation graph for ground truth
+        coords_gt = coords_real.detach().requires_grad_(True)
+        gt_outputs_dict = {var_names[i]: targets_real[:, i] for i in range(len(var_names))}
+        
+        ns_lon_gt, ns_lat_gt, mass_gt = troposphere_pde_residual(
+            coords_gt, gt_outputs_dict, statistics=statistics, mass_balance=mass_balance
+        )
+        physics_loss_gt = ns_lon_gt.pow(2) + ns_lat_gt.pow(2) + mass_gt.pow(2)
+    
+    # Compute difference: positive means physics loss is helping (pred worse than truth)
+    physics_diff = (physics_loss_pred - physics_loss_gt).detach().cpu().numpy()
+    
+    # Extract coordinates for plotting
+    lats = coords_real[:, 1].detach().cpu().numpy()
+    lons = coords_real[:, 0].detach().cpu().numpy()
+    
+    # Create figure
+    fig, axes = plt.subplots(1, 2, figsize=(15, 5))
+    
+    # Plot 1: Spatial distribution of physics loss difference
+    ax = axes[0]
+    H, xedges, yedges = np.histogram2d(
+        lons, lats, bins=[72, 36],
+        weights=physics_diff
+    )
+    counts, _, _ = np.histogram2d(lons, lats, bins=[72, 36])
+    H = np.divide(H, counts, where=counts > 0, out=np.zeros_like(H))
+    
+    # Use diverging colormap centered at zero
+    vmax = np.abs(H).max()
+    im = ax.imshow(
+        H.T, origin='lower',
+        extent=[-180, 180, -90, 90],
+        cmap='RdBu_r', aspect='auto',
+        vmin=-vmax, vmax=vmax
+    )
+    ax.set_title('Physics Loss: Pred - Truth\n(Red=Helping, Blue=Hurting)')
+    ax.set_xlabel('Longitude (°)')
+    ax.set_ylabel('Latitude (°)')
+    ax.grid(True, alpha=0.3)
+    plt.colorbar(im, ax=ax, label='Δ Physics Loss')
+    
+    # Plot 2: Histogram showing distribution
+    ax = axes[1]
+    ax.hist(physics_diff, bins=50, alpha=0.7, edgecolor='black')
+    ax.axvline(0, color='red', linestyle='--', linewidth=2, label='Zero (neutral)')
+    ax.set_xlabel('Physics Loss Difference (Pred - Truth)')
+    ax.set_ylabel('Count')
+    ax.set_title('Distribution of Physics Loss Difference')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    
+    # Add text summary
+    pct_helping = (physics_diff > 0).sum() / len(physics_diff) * 100
+    ax.text(0.05, 0.95, f'{pct_helping:.1f}% points: physics helping',
+            transform=ax.transAxes, verticalalignment='top',
+            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+    
+    plt.tight_layout()
+    return fig
+
 
 # ============================================================================
 # Helper Functions
