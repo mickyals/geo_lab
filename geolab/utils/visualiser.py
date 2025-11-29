@@ -200,6 +200,12 @@ def plot_horizontal_slices(
     
     # Get model predictions on dense grid
     preds = model(norm_grid_coords)
+
+    # Denormalize predictions
+    for i in range(len(var_names)):
+        var_mean = statistics[var_names[i]][2]
+        var_std = statistics[var_names[i]][3]
+        preds[:, i] = preds[:, i] * var_std + var_mean
     
     # Create figures for each variable
     figures = {}
@@ -262,6 +268,12 @@ def plot_meridional_slices(
     
     # Get model predictions
     preds = model(norm_grid_coords)
+
+    # Denormalize predictions
+    for i in range(len(var_names)):
+        var_mean = statistics[var_names[i]][2]
+        var_std = statistics[var_names[i]][3]
+        preds[:, i] = preds[:, i] * var_std + var_mean
     
     # Create figures for each variable
     figures = {}
@@ -322,6 +334,12 @@ def plot_zonal_mean(
     
     # Get model predictions
     preds = model(norm_grid_coords)
+
+    # Denormalize predictions
+    for i in range(len(var_names)):
+        var_mean = statistics[var_names[i]][2]
+        var_std = statistics[var_names[i]][3]
+        preds[:, i] = preds[:, i] * var_std + var_mean
     
     figures = {}
     
@@ -711,7 +729,7 @@ def _get_var_label(var_name: str) -> str:
         't': 'Temperature (K)',
         'w': 'Vertical Velocity (Pa/s)',
         'u': 'Zonal Wind (m/s)',
-        'z': 'Geopotential Height (m)',
+        'z': 'Geopotential (m²/s²)',
         'v': 'Meridional Wind (m/s)'
     }
     return labels.get(var_name, var_name)
