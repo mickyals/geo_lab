@@ -635,7 +635,12 @@ def _create_horizontal_plot(
     pressure: int
 ) -> plt.Figure:
     """Create a single-panel plot showing model prediction."""
-    fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+    fig = plt.figure(figsize=(10, 6))
+    ax = plt.axes(projection=ccrs.PlateCarree())
+
+    # Add coastlines and land
+    ax.add_feature(cfeature.LAND, facecolor='lightgray', zorder=0)
+    ax.add_feature(cfeature.COASTLINE, linewidth=0.6)   
     
     extent = [-180, 180, -90, 90]
     
@@ -660,15 +665,18 @@ def _create_horizontal_plot(
     
     im = ax.imshow(
         pred_field.T, origin='lower', extent=extent,
-        cmap=cmap, aspect='auto', vmin=vmin, vmax=vmax
+        cmap=cmap, aspect='auto', vmin=vmin, vmax=vmax,
+        transform=ccrs.PlateCarree()
     )
     ax.set_title(f'{var_name.upper()} @ {pressure} hPa')
-    ax.set_xlabel('Longitude (°)')
-    ax.set_ylabel('Latitude (°)')
-    ax.grid(True, alpha=0.3)
+
+    gl = ax.gridlines(draw_labels=True, linewidth=0.3, alpha=0.5)
+    gl.top_labels = False
+    gl.right_labels = False
+
     plt.colorbar(im, ax=ax, label=_get_var_label(var_name))
-    
     plt.tight_layout()
+    
     return fig
 
 
