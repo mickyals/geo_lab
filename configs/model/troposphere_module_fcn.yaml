@@ -32,4 +32,5 @@ scheduler_config:
 
 # Physics-informed neural network settings
 train_pinn: false
+mass_balance: false
 physics_loss_weight: 0.0

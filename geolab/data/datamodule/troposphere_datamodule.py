@@ -233,13 +233,14 @@ class TroposphereDataModule(LightningDataModule):
         )
 
     def test_dataloader(self):
-        return None
-        #return None #DataLoader(
-        #     dataset=self.test_dataset,
-        #     batch_size=self.batch_size,
-        #     num_workers=self.num_workers,
-        #     pin_memory=self.pin_memory,
-        #     shuffle=False)
+        return DataLoader(
+            dataset=self.val_dataset,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+            pin_memory=self.pin_memory,
+            shuffle=False,
+            persistent_workers=self.persistent_workers,
+        )
 
     def teardown(self, stage: Optional[str] = None):
         """Clean up after fit or test."""
