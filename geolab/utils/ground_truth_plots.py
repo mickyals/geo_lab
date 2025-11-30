@@ -226,11 +226,11 @@ def _create_wind_magnitude_plots(
             # Compute wind magnitude
             wind_mag = np.sqrt(u_t.values**2 + v_t.values**2)
             
-            # Create DataArray for plotting
+            # Create DataArray for plotting - keep same dims as u_t
             wind_mag_da = xr.DataArray(
                 wind_mag,
                 coords={lat_dim: u_t[lat_dim], lon_dim: u_t[lon_dim]},
-                dims=[lon_dim, lat_dim]
+                dims=u_t.dims  # Use the same dimension order as the original data
             )
             
             # Create figure
