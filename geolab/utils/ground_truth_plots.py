@@ -10,6 +10,7 @@ import cartopy.feature as cfeature
 import colorcet as cc
 from pathlib import Path
 from typing import List, Optional, Dict
+import json
 
 
 def plot_era5_horizontal_slices(
@@ -21,7 +22,7 @@ def plot_era5_horizontal_slices(
     pressure_dim: str = "pressure_level",
     lat_dim: str = "latitude",
     lon_dim: str = "longitude"
-) -> None:
+) -> Dict:
     """
     Generate horizontal slice plots from ERA5 data for specified variables and pressure levels.
     
@@ -34,6 +35,9 @@ def plot_era5_horizontal_slices(
         pressure_dim: Name of pressure dimension in dataset
         lat_dim: Name of latitude dimension in dataset
         lon_dim: Name of longitude dimension in dataset
+    
+    Returns:
+        Dictionary containing vmin/vmax ranges for each variable and pressure level
     """
     # Load dataset
     print(f"Loading ERA5 data from {data_path}")
@@ -56,6 +60,9 @@ def plot_era5_horizontal_slices(
     print(f"Processing variables: {var_names}")
     print(f"Pressure levels: {pressure_levels} hPa")
     
+    # Dictionary to store value ranges
+    value_ranges = {}
+    
     # Process each variable
     for var_name in var_names:
         if var_name not in data.variables:
@@ -64,6 +71,8 @@ def plot_era5_horizontal_slices(
         
         var_dir = output_path / var_name
         var_dir.mkdir(exist_ok=True)
+        
+        value_ranges[var_name] = {}
         
         # Process each pressure level
         for pressure in pressure_levels:
@@ -79,9 +88,14 @@ def plot_era5_horizontal_slices(
                 print(f"  Pressure level {pressure} not found. Skipping.")
                 continue
             
+            # Track min/max across all timesteps
+            all_values = []
+            
             # Process each time step
             for idx, t in enumerate(time_steps):
                 data_t = data_p.sel({time_dim: t})
+                field = data_t.values
+                all_values.append(field)
                 
                 # Create figure
                 fig = _create_horizontal_ground_truth_plot(
@@ -104,17 +118,63 @@ def plot_era5_horizontal_slices(
                 if (idx + 1) % 10 == 0:
                     print(f"  Processed {idx + 1}/{n_times} time steps")
             
+            # Calculate statistics across all timesteps
+            all_values_flat = np.concatenate([v.flatten() for v in all_values])
+            vmin_data = float(np.nanmin(all_values_flat))
+            vmax_data = float(np.nanmax(all_values_flat))
+            
+            # Determine vmin/vmax based on variable type
+            if var_name in ['u', 'v']:
+                # Symmetric around zero, using max absolute value
+                vmax = float(np.nanmax(np.abs(all_values_flat)))
+                vmin = -vmax
+            elif var_name == 'uv':
+                vmin = 0.0
+                vmax = vmax_data
+            else:
+                # Use actual data range
+                vmin = vmin_data
+                vmax = vmax_data
+            
+            value_ranges[var_name][f"{pressure}hPa"] = {
+                'vmin': vmin,
+                'vmax': vmax,
+                'data_min': vmin_data,
+                'data_max': vmax_data
+            }
+            
             print(f"  Completed {var_name} @ {pressure} hPa")
+            print(f"  Value range: [{vmin:.4f}, {vmax:.4f}]")
     
     # Create wind magnitude plots if both u and v are available
     if 'u' in var_names and 'v' in var_names and 'u' in data.variables and 'v' in data.variables:
         print("\nGenerating wind magnitude plots...")
-        _create_wind_magnitude_plots(
+        uv_ranges = _create_wind_magnitude_plots(
             data, pressure_levels, output_path, time_steps,
             time_dim, pressure_dim, lat_dim, lon_dim
         )
+        value_ranges['uv'] = uv_ranges
+    
+    # Print summary
+    print("\n" + "="*80)
+    print("VALUE RANGES SUMMARY")
+    print("="*80)
+    for var_name, pressure_data in value_ranges.items():
+        print(f"\n{var_name.upper()}:")
+        for pressure_str, ranges in pressure_data.items():
+            print(f"  {pressure_str}:")
+            print(f"    Plot range: vmin={ranges['vmin']:.4f}, vmax={ranges['vmax']:.4f}")
+            print(f"    Data range: [{ranges['data_min']:.4f}, {ranges['data_max']:.4f}]")
+    
+    # Save to JSON file
+    json_path = output_path / "value_ranges.json"
+    with open(json_path, 'w') as f:
+        json.dump(value_ranges, f, indent=2)
+    print(f"\nValue ranges saved to {json_path}")
     
     print(f"\nAll plots saved to {output_dir}")
+    
+    return value_ranges
 
 
 def _create_horizontal_ground_truth_plot(
@@ -201,10 +261,12 @@ def _create_wind_magnitude_plots(
     pressure_dim: str,
     lat_dim: str,
     lon_dim: str
-) -> None:
+) -> Dict:
     """Create wind magnitude plots from u and v components."""
     uv_dir = output_path / "uv"
     uv_dir.mkdir(exist_ok=True)
+    
+    uv_ranges = {}
     
     for pressure in pressure_levels:
         pressure_dir = uv_dir / f"{pressure}hPa"
@@ -219,12 +281,15 @@ def _create_wind_magnitude_plots(
             print(f"  Pressure level {pressure} not found. Skipping.")
             continue
         
+        all_wind_mags = []
+        
         for idx, t in enumerate(time_steps):
             u_t = u_data.sel({time_dim: t})
             v_t = v_data.sel({time_dim: t})
             
             # Compute wind magnitude
             wind_mag = np.sqrt(u_t.values**2 + v_t.values**2)
+            all_wind_mags.append(wind_mag)
             
             # Create DataArray for plotting - keep same dims as u_t
             wind_mag_da = xr.DataArray(
@@ -249,7 +314,26 @@ def _create_wind_magnitude_plots(
             if (idx + 1) % 10 == 0:
                 print(f"  Processed {idx + 1}/{len(time_steps)} time steps")
         
+        # Calculate statistics
+        all_wind_mags_flat = np.concatenate([v.flatten() for v in all_wind_mags])
+        vmin_data = float(np.nanmin(all_wind_mags_flat))
+        vmax_data = float(np.nanmax(all_wind_mags_flat))
+        
+        # Wind magnitude: vmin=0, vmax=data max
+        vmin = 0.0
+        vmax = vmax_data
+        
+        uv_ranges[f"{pressure}hPa"] = {
+            'vmin': vmin,
+            'vmax': vmax,
+            'data_min': vmin_data,
+            'data_max': vmax_data
+        }
+        
         print(f"  Completed wind magnitude @ {pressure} hPa")
+        print(f"  Value range: [{vmin:.4f}, {vmax:.4f}]")
+    
+    return uv_ranges
 
 
 def _get_colormap_and_limits(var_name: str, field: np.ndarray) -> tuple:
@@ -299,8 +383,8 @@ if __name__ == "__main__":
     PRESSURE_LEVELS = [200, 500, 850]
     OUTPUT_DIR = "./ground_truth_plots"
     
-    # Generate plots
-    plot_era5_horizontal_slices(
+    # Generate plots and get value ranges
+    value_ranges = plot_era5_horizontal_slices(
         data_path=DATA_PATH,
         var_names=VARIABLES,
         pressure_levels=PRESSURE_LEVELS,
