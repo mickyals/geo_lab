@@ -204,9 +204,12 @@ def plot_horizontal_slices(
 
     # Denormalize predictions
     for i in range(len(var_names)):
-        var_mean = statistics[var_names[i]][2]
-        var_std = statistics[var_names[i]][3]
-        preds[:, i] = preds[:, i] * var_std + var_mean
+        var_min = statistics[var_names[i]][0]  # min value
+        var_max = statistics[var_names[i]][1]  # max value
+        
+        # Reverse the [-1, 1] normalization: x_norm = 2*(x - min)/(max - min) - 1
+        # So: x = (x_norm + 1) * (max - min) / 2 + min
+        preds[:, i] = (preds[:, i] + 1.0) * (var_max - var_min) / 2.0 + var_min
 
     # Wind magnitude calculation
     if 'u' in var_names and 'v' in var_names:
@@ -285,9 +288,12 @@ def plot_meridional_slices(
 
     # Denormalize predictions
     for i in range(len(var_names)):
-        var_mean = statistics[var_names[i]][2]
-        var_std = statistics[var_names[i]][3]
-        preds[:, i] = preds[:, i] * var_std + var_mean
+        var_min = statistics[var_names[i]][0]  # min value
+        var_max = statistics[var_names[i]][1]  # max value
+        
+        # Reverse the [-1, 1] normalization: x_norm = 2*(x - min)/(max - min) - 1
+        # So: x = (x_norm + 1) * (max - min) / 2 + min
+        preds[:, i] = (preds[:, i] + 1.0) * (var_max - var_min) / 2.0 + var_min
     
     # Create figures for each variable
     figures = {}
@@ -351,9 +357,12 @@ def plot_zonal_mean(
 
     # Denormalize predictions
     for i in range(len(var_names)):
-        var_mean = statistics[var_names[i]][2]
-        var_std = statistics[var_names[i]][3]
-        preds[:, i] = preds[:, i] * var_std + var_mean
+        var_min = statistics[var_names[i]][0]  # min value
+        var_max = statistics[var_names[i]][1]  # max value
+        
+        # Reverse the [-1, 1] normalization: x_norm = 2*(x - min)/(max - min) - 1
+        # So: x = (x_norm + 1) * (max - min) / 2 + min
+        preds[:, i] = (preds[:, i] + 1.0) * (var_max - var_min) / 2.0 + var_min
     
     figures = {}
     
@@ -766,6 +775,3 @@ def _get_var_label(var_name: str) -> str:
         'uv': 'Wind Magnitude (m/s)'
     }
     return labels.get(var_name, var_name)
-
-
-    
