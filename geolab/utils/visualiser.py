@@ -7,6 +7,7 @@ import numpy as np
 from typing import Dict, List, Optional
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
+import colorcet as cc
 
 
 def plot_error_heatmap(
@@ -206,6 +207,12 @@ def plot_horizontal_slices(
         var_mean = statistics[var_names[i]][2]
         var_std = statistics[var_names[i]][3]
         preds[:, i] = preds[:, i] * var_std + var_mean
+
+    # Wind magnitude calculation
+    if 'u' in var_names and 'v' in var_names:
+        u_idx = var_names.index('u')
+        v_idx = var_names.index('v')
+        wind_mag = torch.sqrt(preds[:, u_idx]**2 + preds[:, v_idx]**2)
     
     # Create figures for each variable
     figures = {}
@@ -217,6 +224,13 @@ def plot_horizontal_slices(
             pred_field, var_name, pressure
         )
         figures[var_name] = fig
+
+    if 'u' in var_names and 'v' in var_names:
+        wind_mag_field = wind_mag.reshape(n_lons, n_lats).cpu().numpy()
+        fig = _create_horizontal_plot(
+            wind_mag_field, 'uv', pressure
+        )
+        figures['uv'] = fig
     
     return figures
 
@@ -630,6 +644,16 @@ def _create_horizontal_plot(
         cmap = 'RdBu_r'
         vmax = np.abs(pred_field).max()
         vmin = -vmax
+    elif var_name == 'uv':
+        cmap = 'cet_CET_R3'  # or cc.m_CET_R3
+        vmin = 0
+        vmax = None
+    elif var_name == 't':
+        cmap = 'cet_CET_R1'  # or cc.m_CET_R1
+        vmin, vmax = None, None
+    elif var_name == 'z':
+        cmap = 'cet_rainbow'  # or cc.m_rainbow
+        vmin, vmax = None, None
     else:
         cmap = 'viridis'
         vmin, vmax = None, None
@@ -730,7 +754,8 @@ def _get_var_label(var_name: str) -> str:
         'w': 'Vertical Velocity (Pa/s)',
         'u': 'Zonal Wind (m/s)',
         'z': 'Geopotential (m²/s²)',
-        'v': 'Meridional Wind (m/s)'
+        'v': 'Meridional Wind (m/s)',
+        'uv': 'Wind Magnitude (m/s)'
     }
     return labels.get(var_name, var_name)
 
