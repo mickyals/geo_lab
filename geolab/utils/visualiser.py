@@ -9,6 +9,39 @@ import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import colorcet as cc
 
+# Ground truth value ranges from ERA5 data
+GROUND_TRUTH_RANGES = {
+    "t": {
+        200: {"vmin": 193.58, "vmax": 231.82},
+        500: {"vmin": 223.57, "vmax": 275.73},
+        850: {"vmin": 225.91, "vmax": 305.72}
+    },
+    "u": {
+        200: {"vmin": -92.99, "vmax": 92.99},
+        500: {"vmin": -61.90, "vmax": 61.90},
+        850: {"vmin": -51.97, "vmax": 51.97}
+    },
+    "v": {
+        200: {"vmin": -63.03, "vmax": 63.03},
+        500: {"vmin": -52.41, "vmax": 52.41},
+        850: {"vmin": -54.49, "vmax": 54.49}
+    },
+    "z": {
+        200: {"vmin": 102408.81, "vmax": 122770.81},
+        500: {"vmin": 45832.16, "vmax": 58609.67},
+        850: {"vmin": 6847.90, "vmax": 16639.25}
+    },
+    "w": {
+        200: {"vmin": -9.78, "vmax": 2.07},
+        500: {"vmin": -14.14, "vmax": 4.63},
+        850: {"vmin": -11.98, "vmax": 8.34}
+    },
+    "uv": {
+        200: {"vmin": 0.0, "vmax": 93.32},
+        500: {"vmin": 0.0, "vmax": 66.51},
+        850: {"vmin": 0.0, "vmax": 54.49}
+    }
+}
 
 def plot_error_heatmap(
     model,
@@ -161,7 +194,8 @@ def plot_horizontal_slices(
     batch: Dict,
     pressure: int,
     var_names: List[str],
-    grid_resolution: Optional[dict] = None
+    grid_resolution: Optional[dict] = None,
+    use_ground_truth_ranges: bool = True
 ) -> Dict[str, plt.Figure]:
     """
     Plot 2D maps of model predictions at a fixed pressure level.
@@ -172,6 +206,7 @@ def plot_horizontal_slices(
         pressure: Pressure level in hPa
         var_names: List of variable names
         grid_resolution: Grid resolution in degrees
+        use_ground_truth_ranges: If True, use ground truth color ranges for consistency
     
     Returns:
         Dictionary mapping variable names to figures
@@ -224,14 +259,16 @@ def plot_horizontal_slices(
         pred_field = preds[:, i].reshape(n_lons, n_lats).cpu().numpy()
         
         fig = _create_horizontal_plot(
-            pred_field, var_name, pressure
+            pred_field, var_name, pressure,
+            use_ground_truth_ranges=use_ground_truth_ranges  
         )
         figures[var_name] = fig
 
     if 'u' in var_names and 'v' in var_names:
         wind_mag_field = wind_mag.reshape(n_lons, n_lats).cpu().numpy()
         fig = _create_horizontal_plot(
-            wind_mag_field, 'uv', pressure
+            wind_mag_field, 'uv', pressure,
+            use_ground_truth_ranges=use_ground_truth_ranges  
         )
         figures['uv'] = fig
     
@@ -641,7 +678,8 @@ def _create_full_grid(
 def _create_horizontal_plot(
     pred_field: np.ndarray,
     var_name: str,
-    pressure: int
+    pressure: int,
+    use_ground_truth_ranges: bool = True  # ADD THIS PARAMETER
 ) -> plt.Figure:
     """Create a single-panel plot showing model prediction."""
     fig = plt.figure(figsize=(10, 6))
@@ -653,24 +691,43 @@ def _create_horizontal_plot(
     
     extent = [-180, 180, -90, 90]
     
-    # Determine colormap based on variable
-    if var_name in ['u', 'v']:
-        cmap = 'RdBu_r'
-        vmax = np.abs(pred_field).max()
-        vmin = -vmax
-    elif var_name == 'uv':
-        cmap = 'cet_CET_R3'  # or cc.m_CET_R3
-        vmin = 0
-        vmax = None
-    elif var_name == 't':
-        cmap = 'cet_CET_R1'  # or cc.m_CET_R1
-        vmin, vmax = None, None
-    elif var_name == 'z':
-        cmap = 'cet_rainbow'  # or cc.m_rainbow
-        vmin, vmax = None, None
+    # Determine colormap and limits based on variable
+    if use_ground_truth_ranges and var_name in GROUND_TRUTH_RANGES and pressure in GROUND_TRUTH_RANGES[var_name]:
+        # Use ground truth ranges for consistent comparison
+        ranges = GROUND_TRUTH_RANGES[var_name][pressure]
+        vmin = ranges["vmin"]
+        vmax = ranges["vmax"]
+        
+        # Still need to determine colormap
+        if var_name in ['u', 'v']:
+            cmap = 'RdBu_r'
+        elif var_name == 'uv':
+            cmap = 'cet_CET_R3'
+        elif var_name == 't':
+            cmap = 'cet_CET_R1'
+        elif var_name == 'z':
+            cmap = 'cet_rainbow'
+        else:
+            cmap = 'viridis'
     else:
-        cmap = 'viridis'
-        vmin, vmax = None, None
+        # Fall back to original logic if not using ground truth ranges
+        if var_name in ['u', 'v']:
+            cmap = 'RdBu_r'
+            vmax = np.abs(pred_field).max()
+            vmin = -vmax
+        elif var_name == 'uv':
+            cmap = 'cet_CET_R3'
+            vmin = 0
+            vmax = None
+        elif var_name == 't':
+            cmap = 'cet_CET_R1'
+            vmin, vmax = None, None
+        elif var_name == 'z':
+            cmap = 'cet_rainbow'
+            vmin, vmax = None, None
+        else:
+            cmap = 'viridis'
+            vmin, vmax = None, None
     
     im = ax.imshow(
         pred_field.T, origin='lower', extent=extent,
