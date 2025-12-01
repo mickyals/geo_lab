@@ -6,7 +6,7 @@ pressure_idx_range: null  # null is All pressure levels
 latitude_idx_range: null  # null is All latitudes
 longitude_idx_range: null  # null is All longitudes
 test_split: 0.0
-val_split: 0.1
+val_split: 0.3
 num_virtual: 100000000  # Number of virtual points
 include_virtual: false
 use_lhs: true  # Use Latin Hypercube Sampling
