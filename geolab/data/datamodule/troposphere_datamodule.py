@@ -1,30 +1,29 @@
-from typing import Any, Dict, Optional, Tuple, List
+from typing import Any, Dict, List, Optional, Tuple, Union
 from pathlib import Path
 
 import numpy as np
 import torch
 from lightning import LightningDataModule
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader, Dataset
+import xarray as xr
 
 from geolab.data.dataset import ERA5MultiData, ERA5MultiDataset
-import xarray as xr
 
 
 class TroposphereDataModule(LightningDataModule):
-
     def __init__(
             self,
-            data_dir: str,
-            read_data_fn=xr.open_dataset,
+            data_dir: Union[str, Path],
             solution_vars: List[str] = ["u", "v", "w", "z"],
-            time_idx_range: List[int] = None,
-            pressure_idx_range: List[int] = None,
-            latitude_idx_range: List[int] = None,
-            longitude_idx_range: List[int] = None,
-            include_virtual=False,
-            indexing = 'ij',
-            num_virtual = 20000,
-            use_lhs = True,
+            read_data_fn=None,
+            time_idx_range: Optional[List[int]] = None,
+            pressure_idx_range: Optional[List[int]] = None,
+            latitude_idx_range: Optional[List[int]] = None,
+            longitude_idx_range: Optional[List[int]] = None,
+            include_virtual: bool = False,
+            indexing: str = 'ij',
+            num_virtual: int = 20000,
+            use_lhs: bool = True,
             batch_size: int = 32,
             val_split: float = 0.15,
             test_split: float = 0.70,
@@ -32,92 +31,79 @@ class TroposphereDataModule(LightningDataModule):
             num_workers: int = 4,
             pin_memory: bool = True,
             persistent_workers: bool = False,
+            seed: int = 42
     ):
-        """Initialize a TroposphereDataModule.
-
-        Args:
-            data_dir: Path to the directory containing the data files
-            read_data_fn: Function to read the data files (default: xr.open_dataset)
-            solution_vars: List of variable names to include in the dataset
-            prc_points: Percentage of total points to use (0.0 to 1.0)
-            prc_virtual: Percentage of virtual points to use (0.0 to 1.0) based on the real points so 0.1 means 10% of the real points
-            batch_size: Batch size for the dataloaders
-            val_split: Fraction of data to use for validation
-            test_split: Fraction of data to use for testing
-            num_workers: Number of workers for the dataloaders
-            pin_memory: Whether to pin memory for the dataloaders
-            seed: Random seed for reproducibility
-        """
+        """Initialize a TroposphereDataModule with improved memory management and error handling."""
         super().__init__()
-        self.save_hyperparameters()
+        self.save_hyperparameters(ignore=["read_data_fn"])
 
-        self.data_dir = data_dir
-        self.read_data_fn = read_data_fn
+        # Set default read function if not provided
+        self.read_data_fn = read_data_fn if read_data_fn is not None else xr.open_dataset
+
+        # Store parameters
+        self.data_dir = Path(data_dir)
         self.solution_vars = solution_vars
-        self.time_idx_range = time_idx_range if time_idx_range is not None else None
-        self.pressure_idx_range = pressure_idx_range if pressure_idx_range is not None else None
-        self.latitude_idx_range = latitude_idx_range if latitude_idx_range is not None else None
-        self.longitude_idx_range = longitude_idx_range if longitude_idx_range is not None else None
+        self.time_idx_range = time_idx_range
+        self.pressure_idx_range = pressure_idx_range
+        self.latitude_idx_range = latitude_idx_range
+        self.longitude_idx_range = longitude_idx_range
         self.include_virtual = include_virtual
         self.indexing = indexing
         self.num_virtual = num_virtual
         self.use_lhs = use_lhs
         self.batch_size = batch_size
+        self.val_split = val_split
         self.test_split = test_split
         self.pi_scale = pi_scale
-        self.val_split = val_split
         self.num_workers = num_workers
         self.pin_memory = pin_memory
         self.persistent_workers = persistent_workers
+        self.seed = seed
 
-        # Dataset attributes
+        # Initialize dataset attributes
         self.train_dataset = None
         self.val_dataset = None
         self.test_dataset = None
-        self.era5_data = None
+        self._data_counts = None
+        self.statistics = None
+        self.full_data = None
+
+        # Set random seed for reproducibility
+        self.rng = np.random.default_rng(seed)
 
     def prepare_data(self):
-        """Download or load ERA5 data if needed.
-
-        This method is called only once (on rank 0).
-        Do not assign state (e.g., self.x = y) here that will be needed later.
-        """
+        """Download or load ERA5 data if needed."""
         print("Preparing ERA5 data...")
 
-        era5 = ERA5MultiData(
-            data_dir=str(self.data_dir),
-            read_data_fn=self.read_data_fn,
-            variables=self.solution_vars
-        )
+        try:
+            era5 = ERA5MultiData(
+                data_dir=str(self.data_dir),
+                read_data_fn=self.read_data_fn,
+                variables=self.solution_vars
+            )
 
-        # Run the data preparation/loading
-        data, statistics = era5.run(
-            self.time_idx_range,
-            self.pressure_idx_range,
-            self.latitude_idx_range,
-            self.longitude_idx_range,
-            indexing=self.indexing,
-            num_samples=self.num_virtual,
-            include_virtual=self.include_virtual,
-            use_lhs=self.use_lhs
-        )
+            data, statistics = era5.run(
+                self.time_idx_range,
+                self.pressure_idx_range,
+                self.latitude_idx_range,
+                self.longitude_idx_range,
+                indexing=self.indexing,
+                num_samples=self.num_virtual,
+                include_virtual=self.include_virtual,
+                use_lhs=self.use_lhs
+            )
 
-        # Optionally save preprocessed data/statistics to disk
-        # so that setup() can reload quickly without recomputation
-        self._prepared_data = (data, statistics)
-        print("Data prepared successfully.")
+            self._prepared_data = (data, statistics)
+            print("Data prepared successfully.")
 
-    def setup(self, stage: Optional[str] = None):
-        """Split data into train/val/test and create datasets."""
-        if hasattr(self, 'full_data') and self.full_data is not None:
-            print(f"Data already loaded, skipping reload for stage: {stage}")
-            return
+        except Exception as e:
+            raise RuntimeError(f"Failed to prepare data: {str(e)}") from e
 
-        print(f"Setting up datasets for stage: {stage}")
-
-        # === Load from prepare_data() output or regenerate if needed ===
+    def _load_and_prepare_data(self):
+        """Load and prepare data, handling both prepared and direct loading."""
         if hasattr(self, '_prepared_data'):
             data, statistics = self._prepared_data
+            del self._prepared_data
         else:
             print("Warning: prepare_data() was not run, loading data directly.")
             era5 = ERA5MultiData(
@@ -138,30 +124,25 @@ class TroposphereDataModule(LightningDataModule):
 
         self.statistics = statistics
         self.full_data = data['data']
+        self._data_counts = data['count']
 
-        if self.include_virtual:
-            total_points = data['count'][0]
-            real_points = data['count'][1]
-            virtual_points = data['count'][2]
-        else:
-            real_points = data['count'][0]
-            total_points = real_points
-            virtual_points = 0
-
-        print(f"Total={total_points}, Real={real_points}, Virtual={virtual_points}")
-
-        # === Identify real and virtual samples ===
+    def _get_real_virtual_indices(self):
+        """Get indices for real and virtual samples."""
         if 'classification' in self.full_data:
             classification = self.full_data['classification']
             real_indices = np.where(classification)[0]
-            virtual_indices = np.where(~classification)[0]
+            virtual_indices = np.where(~classification)[0] if self.include_virtual else np.array([], dtype=int)
         else:
-            # fallback if not explicitly labeled
-            real_indices = np.arange(real_points)
-            virtual_indices = np.arange(real_points, total_points)
+            real_count = self._data_counts[1] if self.include_virtual else self._data_counts[0]
+            real_indices = np.arange(real_count)
+            virtual_indices = np.arange(real_count,
+                                        len(self.full_data['longitude'])) if self.include_virtual else np.array([],
+                                                                                                                dtype=int)
 
-        # === Split only the real indices ===
-        self.rng = np.random.default_rng()
+        return real_indices, virtual_indices
+
+    def _split_indices(self, real_indices, virtual_indices):
+        """Split real indices into train/val/test sets and combine with virtual samples."""
         shuffled_real = self.rng.permutation(real_indices)
 
         n_val = int(len(real_indices) * self.val_split)
@@ -172,102 +153,107 @@ class TroposphereDataModule(LightningDataModule):
         real_val_idx = shuffled_real[n_train_real:n_train_real + n_val]
         real_test_idx = shuffled_real[n_train_real + n_val:]
 
-        # === Construct splits ===
         train_idx = np.concatenate([virtual_indices, real_train_idx])
         train_idx = self.rng.permutation(train_idx)
 
-        val_idx = real_val_idx
-        test_idx = real_test_idx
+        return train_idx, real_val_idx, real_test_idx
 
-        print(f"Split sizes -> Train: {len(train_idx)}, Val: {len(val_idx)}, Test: {len(test_idx)}")
-        print(f"  (Real in train: {len(real_train_idx)}, Virtual in train: {len(virtual_indices)})")
-
-        # === Build dataset objects ===
-        self.train_dataset = ERA5MultiDataset(
+    def _create_dataset(self, indices: np.ndarray, include_virtual: bool) -> Dataset:
+        """Create a dataset with the given indices."""
+        return ERA5MultiDataset(
             data=self.full_data,
             statistics=self.statistics,
-            indices=train_idx,
-            include_virtual=True,
+            indices=indices,
+            include_virtual=include_virtual,
             variables=self.solution_vars,
             pi_scale=self.pi_scale
         )
 
-        self.val_dataset = ERA5MultiDataset(
-            data=self.full_data,
-            statistics=self.statistics,
-            indices=val_idx,
-            include_virtual=False,  # real-only validation
-            variables=self.solution_vars,
-            pi_scale=self.pi_scale
-        )
+    def setup(self, stage: Optional[str] = None):
+        """Set up datasets for training, validation, and testing."""
+        if hasattr(self, 'full_data') and self.full_data is not None:
+            print(f"Data already loaded, skipping reload for stage: {stage}")
+            return
 
-        # self.test_dataset = ERA5MultiDataset(
-        #     data=self.full_data,
-        #     statistics=self.statistics,
-        #     indices=test_idx,
-        #     include_virtual=False,  # real-only test
-        #     variables=self.solution_vars,
-        #     pi_scale=self.pi_scale
-        # )
+        print(f"Setting up datasets for stage: {stage}")
 
-    def train_dataloader(self):
+        self._load_and_prepare_data()
+        real_indices, virtual_indices = self._get_real_virtual_indices()
+
+        total_points = len(self.full_data['longitude'])
+        real_points = len(real_indices)
+        virtual_points = len(virtual_indices)
+        print(f"Dataset statistics - Total: {total_points}, Real: {real_points}, Virtual: {virtual_points}")
+
+        train_idx, val_idx, test_idx = self._split_indices(real_indices, virtual_indices)
+
+        print(f"Split sizes - Train: {len(train_idx)}, Val: {len(val_idx)}, Test: {len(test_idx)}")
+        print(f"  (Real in train: {len(train_idx) - len(virtual_indices)}, Virtual in train: {len(virtual_indices)})")
+
+        self.train_dataset = self._create_dataset(train_idx, include_virtual=True)
+        self.val_dataset = self._create_dataset(val_idx, include_virtual=False)
+
+        # Uncomment if test set is needed
+        # self.test_dataset = self._create_dataset(test_idx, include_virtual=False)
+
+    def _create_dataloader(self, dataset: Dataset, shuffle: bool = False) -> DataLoader:
+        """Create a DataLoader with consistent settings."""
         return DataLoader(
-            dataset=self.train_dataset,
-            batch_size=self.batch_size,
-            prefetch_factor=1,
-            num_workers=self.num_workers,
-            pin_memory=self.pin_memory,
-            shuffle=True,
-            persistent_workers=self.persistent_workers,
-            drop_last=True
-        )
-
-    def val_dataloader(self):
-        return DataLoader(
-            dataset=self.val_dataset,
+            dataset=dataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
-            shuffle=False,
-            persistent_workers=self.persistent_workers,
+            shuffle=shuffle,
+            persistent_workers=self.persistent_workers and self.num_workers > 0,
+            drop_last=shuffle,
+            prefetch_factor=2 if self.num_workers > 0 else None
         )
 
-    def test_dataloader(self):
-        return DataLoader(
-            dataset=self.val_dataset,
-            batch_size=self.batch_size,
-            num_workers=self.num_workers,
-            pin_memory=self.pin_memory,
-            shuffle=False,
-            persistent_workers=self.persistent_workers,
-        )
+    def train_dataloader(self) -> DataLoader:
+        """Create and return the training DataLoader."""
+        if self.train_dataset is None:
+            self.setup('fit')
+        return self._create_dataloader(self.train_dataset, shuffle=True)
 
-    def teardown(self, stage: Optional[str] = None):
-        """Clean up after fit or test."""
-        pass
+    def val_dataloader(self) -> DataLoader:
+        """Create and return the validation DataLoader."""
+        if self.val_dataset is None:
+            self.setup('fit')
+        return self._create_dataloader(self.val_dataset, shuffle=False)
 
-    def state_dict(self):
-        """Extra things to save to checkpoint."""
-        return {}
+    def test_dataloader(self) -> DataLoader:
+        """Create and return the test DataLoader."""
+        if self.test_dataset is None:
+            self.setup('test')
+        return self._create_dataloader(self.val_dataset, shuffle=False)  # or self.test_dataset if using test set
 
-    def load_state_dict(self, state_dict: Dict[str, Any]):
-        """Things to do when loading checkpoint."""
-        pass
+    def teardown(self, stage: Optional[str] = None) -> None:
+        """Clean up resources."""
+        if hasattr(self, 'full_data'):
+            del self.full_data
+        if hasattr(self, 'train_dataset'):
+            del self.train_dataset
+        if hasattr(self, 'val_dataset'):
+            del self.val_dataset
+        if hasattr(self, 'test_dataset'):
+            del self.test_dataset
+        if hasattr(self, '_prepared_data'):
+            del self._prepared_data
 
     @property
     def num_train_samples(self) -> int:
         """Number of training samples."""
-        return len(self.train_dataset) if self.train_dataset else 0
+        return len(self.train_dataset) if self.train_dataset is not None else 0
 
     @property
     def num_val_samples(self) -> int:
         """Number of validation samples."""
-        return len(self.val_dataset) if self.val_dataset else 0
+        return len(self.val_dataset) if self.val_dataset is not None else 0
 
     @property
     def num_test_samples(self) -> int:
         """Number of test samples."""
-        return len(self.test_dataset) if self.test_dataset else 0
+        return len(self.test_dataset) if hasattr(self, 'test_dataset') and self.test_dataset is not None else 0
 
     @property
     def input_dim(self) -> int:
