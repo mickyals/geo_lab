@@ -238,9 +238,11 @@ class TroposhpereLightningModule(LightningModule):
             abs_lat = torch.abs(lat)
 
             # Regional masks - THESE MAY NEED TO BE NORMALISED
-            tropical_mask = abs_lat < 30
-            midlat_mask = (abs_lat >= 30) & (abs_lat < 60)
-            polar_mask = abs_lat >= 60
+            trop_norm = 2 * (30 -(-90)/(90-(-90))) - 1
+            midlat_norm = 2 * (60 -(-90)/(90-(-90))) - 1
+            tropical_mask = abs_lat < trop_norm
+            midlat_mask = (abs_lat >= trop_norm) & (abs_lat < midlat_norm)
+            polar_mask = abs_lat >= midlat_norm
 
             # Helper function to compute regional physics loss
             def compute_regional_physics(mask):
