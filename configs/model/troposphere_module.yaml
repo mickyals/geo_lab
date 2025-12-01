@@ -4,7 +4,7 @@ _target_: geolab.models.modules.troposphere_module.TroposhpereLightningModule
 model_name: SirenNet
 N_in_features: 4  # longitude, latitude, pressure_level, time
 N_out_features: 5  # t, w, u, z, v
-N_hidden_features: 256
+N_hidden_features: 128
 N_hidden_layers: 5
 position_encoder_type: null # guassian, positional, basic, null if not to include
 mapping_dim: 256 # mapping dimension for positional encoding
