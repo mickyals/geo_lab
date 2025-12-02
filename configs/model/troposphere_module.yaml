@@ -6,9 +6,9 @@ N_in_features: 4  # longitude, latitude, pressure_level, time
 N_out_features: 5  # t, w, u, z, v
 N_hidden_features: 128
 N_hidden_layers: 5
-position_encoder_type: null # guassian, positional, basic, null if not to include
-mapping_dim: 256 # mapping dimension for positional encoding
-scale: 10.0 # scale for positional encoding
+#position_encoder_type: null # guassian, positional, basic, null if not to include
+#mapping_dim: 256 # mapping dimension for positional encoding
+#scale: 10.0 # scale for positional encoding
 
 # Model-specific parameters for SirenNet change for specific model
 model_params:
@@ -29,6 +29,6 @@ scheduler_config:
   factor: 0.1
 
 # Physics-informed neural network settings
-train_pinn: true
+train_pinn: false
 mass_balance: true
 physics_loss_weight: 0.5

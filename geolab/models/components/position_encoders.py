@@ -25,12 +25,11 @@ class FourierFeatures(nn.Module):
     def _define_beta(self, type, scale_value):
         if type == 'gaussian':
             # trying a fixed seed for pickling stability
-            generator = torch.Generator()
-            generator.manual_seed(12345)
+            #generator = torch.Generator()
+            #generator.manual_seed(12345)
             beta = torch.randn(
                 self.mapping_dimension // 2, 
-                self.input_dimension,
-                generator=generator
+                self.input_dimension
             ) * scale_value
         elif type == 'positional':
             j = torch.arange(self.mapping_dimension // 2, dtype=torch.float32)

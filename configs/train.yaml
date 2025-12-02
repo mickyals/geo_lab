@@ -5,7 +5,7 @@
 defaults:
   - _self_
   - data: troposphere
-  - model: troposphere_module
+  - model: troposphere_module_fcn
   - callbacks: default
   - logger: wandb # set logger here or use command line (e.g. `python train.py logger=tensorboard`)
   - trainer: default
