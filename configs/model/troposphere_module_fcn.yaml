@@ -3,12 +3,12 @@ _target_: geolab.models.modules.troposphere_module.TroposhpereLightningModule
 # Model architecture
 model_name: FCN
 N_in_features: 4  # longitude, latitude, pressure_level, time
-N_out_features: 5  # t, w, u, z, v
+N_out_features: 4  # w, u, z, v
 N_hidden_features: 128
 N_hidden_layers: 5
 position_encoder_type: gaussian  # gaussian, positional, basic, null if not to include
 mapping_dim: 128  # mapping dimension for positional encoding
-scale: 3.0  # scale for positional encoding
+scale: 1.0  # scale for positional encoding
 
 # Model-specific parameters for FCN
 model_params:

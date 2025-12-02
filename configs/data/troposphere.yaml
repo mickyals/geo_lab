@@ -1,6 +1,6 @@
 _target_: geolab.data.datamodule.troposphere_datamodule.TroposphereDataModule
 data_dir: ${paths.data_dir}
-solution_vars: ["t", "w", "u", "z", "v"]
+solution_vars: ["w", "u", "z", "v"]
 time_idx_range: [0,1]  # null is All time steps
 pressure_idx_range: null  # null is All pressure levels
 latitude_idx_range: null  # null is All latitudes

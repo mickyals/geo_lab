@@ -58,7 +58,7 @@ class AtmosphericVisualizationCallback(Callback):
         self.enable_physics_residuals = enable_physics_residuals
         
         # Variable names matching model output order: ['t', 'w', 'u', 'z', 'v']
-        self.var_names = ['t', 'w', 'u', 'z', 'v']
+        self.var_names = ['w', 'u', 'z', 'v']
         self.var_labels = {
             't': 'Temperature (K)',
             'w': 'Vertical Velocity (Pa/s)',
