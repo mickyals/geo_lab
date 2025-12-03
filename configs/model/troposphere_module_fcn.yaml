@@ -8,7 +8,7 @@ N_hidden_features: 128
 N_hidden_layers: 5
 position_encoder_type: gaussian  # gaussian, positional, basic, null if not to include
 mapping_dim: 128  # mapping dimension for positional encoding
-scale: 1.0  # scale for positional encoding
+scale: 3.0  # scale for positional encoding
 
 # Model-specific parameters for FCN
 model_params:
