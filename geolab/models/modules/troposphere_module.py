@@ -216,8 +216,14 @@ class TroposhpereLightningModule(LightningModule):
         real_mask = classification.bool()
 
         # === Data loss (MSE for real samples) ===
-        all_loss = self.criterion(preds, targets)
-        data_loss = all_loss[real_mask].mean()
+        all_loss = (preds - targets).pow(2)
+
+        scaling = torch.sqrt(targets[:, 1].pow(2) + targets[:, 3].pow(2) + targets[:, 0].pow(2)).unsqueeze(1) # w and v and u components
+
+        data_loss = all_loss[real_mask].sum(dim=1) * scaling[real_mask]
+
+
+        data_loss = data_loss.mean()
 
         # === Per-variable MSE ===
         per_var_losses = all_loss[real_mask].mean(dim=0)  # Shape: [5]

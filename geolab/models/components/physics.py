@@ -1,4 +1,5 @@
 from geolab.utils.meteorology import coriolis_force, compute_troposphere_gradients
+import torch
 
 
 def troposphere_pde_residual(inputs_tensor, outputs, statistics, mass_balance=True):
@@ -45,14 +46,14 @@ def troposphere_pde_residual(inputs_tensor, outputs, statistics, mass_balance=Tr
                                  + v * grads["u_y"] * (scale_factors["u"]/scale_factors["y"]) \
                                  + w * grads["u_p"] * (scale_factors["u"]/scale_factors["p"])\
                                  - (coriolis_params["beta"] * latitude) * v \
-                                 + grads["z_x"] * (scale_factors["z"]/scale_factors["x"])
+                                 + grads["z_x"]
 
     navier_stokes_latitudinal = grads["v_t"] * (scale_factors["v"]/scale_factors["t"]) \
                                 + u * grads["v_x"] * (scale_factors["v"]/scale_factors["x"]) \
                                 + v * grads["v_y"] * (scale_factors["v"]/scale_factors["y"]) \
                                 + w * grads["v_p"] * (scale_factors["v"]/scale_factors["p"]) \
                                 + (coriolis_params["beta"] * latitude) * u \
-                                + grads["z_y"] * (scale_factors["z"]/scale_factors["y"])
+                                + grads["z_y"]
 
     # the f_0 term is not added for a global case BUT it is added for a regional case
     # (coriolis_params["f_0"] + coriolis_params["beta"] * latitude)
@@ -64,4 +65,4 @@ def troposphere_pde_residual(inputs_tensor, outputs, statistics, mass_balance=Tr
 
         return navier_stokes_longitudinal, navier_stokes_latitudinal, mass_continuity
 
-    return navier_stokes_longitudinal, navier_stokes_latitudinal
+    return navier_stokes_longitudinal, navier_stokes_latitudinal, torch.ones_like(navier_stokes_longitudinal)
