@@ -12,34 +12,70 @@ import colorcet as cc
 # Ground truth value ranges from ERA5 data
 GROUND_TRUTH_RANGES = {
     "t": {
-        200: {"vmin": 193.58, "vmax": 231.82},
-        500: {"vmin": 223.57, "vmax": 275.73},
-        850: {"vmin": 225.91, "vmax": 305.72}
+        "horizontal": {  # For horizontal slices at specific pressure levels
+            200: {"vmin": 193.58, "vmax": 231.82},
+            500: {"vmin": 223.57, "vmax": 275.73},
+            850: {"vmin": 225.91, "vmax": 305.72}
+        },
+        "vertical": {  # For meridional and zonal plots (all pressure levels)
+            "vmin": 195.82,  # Min across all levels
+            "vmax": 293.45   # Max across all levels
+        }
     },
     "u": {
-        200: {"vmin": -92.99, "vmax": 92.99},
-        500: {"vmin": -61.90, "vmax": 61.90},
-        850: {"vmin": -51.97, "vmax": 51.97}
+        "horizontal": {
+            200: {"vmin": -92.99, "vmax": 92.99},
+            500: {"vmin": -61.90, "vmax": 61.90},
+            850: {"vmin": -51.97, "vmax": 51.97}
+        },
+        "vertical": {
+            "vmin": -68.21,  # Use the most extreme symmetric range
+            "vmax": 68.21
+        }
     },
     "v": {
-        200: {"vmin": -63.03, "vmax": 63.03},
-        500: {"vmin": -52.41, "vmax": 52.41},
-        850: {"vmin": -54.49, "vmax": 54.49}
+        "horizontal": {
+            200: {"vmin": -63.03, "vmax": 63.03},
+            500: {"vmin": -52.41, "vmax": 52.41},
+            850: {"vmin": -54.49, "vmax": 54.49}
+        },
+        "vertical": {
+            "vmin": -56.76,
+            "vmax": 56.76
+        }
     },
     "z": {
-        200: {"vmin": 102408.81, "vmax": 122770.81},
-        500: {"vmin": 45832.16, "vmax": 58609.67},
-        850: {"vmin": 6847.90, "vmax": 16639.25}
+        "horizontal": {
+            200: {"vmin": 102408.81, "vmax": 122770.81},
+            500: {"vmin": 45832.16, "vmax": 58609.67},
+            850: {"vmin": 6847.90, "vmax": 16639.25}
+        },
+        "vertical": {
+            "vmin": 8399.23,   
+            "vmax": 122101.88 
+        }
     },
     "w": {
-        200: {"vmin": -9.78, "vmax": 2.07},
-        500: {"vmin": -14.14, "vmax": 4.63},
-        850: {"vmin": -11.98, "vmax": 8.34}
+        "horizontal": {
+            200: {"vmin": -0.26, "vmax": 0.20},
+            500: {"vmin": -0.77, "vmax": 0.45},
+            850: {"vmin": -0.72, "vmax": 0.67}
+        },
+        "vertical": {
+            "vmin": -0.64,  
+            "vmax": 0.40
+        }
     },
     "uv": {
-        200: {"vmin": 0.0, "vmax": 93.32},
-        500: {"vmin": 0.0, "vmax": 66.51},
-        850: {"vmin": 0.0, "vmax": 54.49}
+        "horizontal": {
+            200: {"vmin": 0.0, "vmax": 93.32},
+            500: {"vmin": 0.0, "vmax": 66.51},
+            850: {"vmin": 0.0, "vmax": 54.49}
+        },
+        "vertical": {
+            "vmin": 0.0,
+            "vmax": 93.32
+        }
     }
 }
 
@@ -280,7 +316,7 @@ def plot_meridional_slices(
     batch: Dict,
     longitude: int,
     var_names: List[str],
-    pressure_levels: List[int],
+    pressure_levels: Optional[List[int]] = None,
     grid_resolution: Optional[dict] = None
 ) -> Dict[str, plt.Figure]:
     """
@@ -291,7 +327,7 @@ def plot_meridional_slices(
         batch: Validation batch (used only for timestep reference)
         longitude: Fixed longitude for the slice
         var_names: List of variable names
-        pressure_levels: List of pressure levels
+        pressure_levels: List of pressure levels in hPa. If None, uses standard ERA5 levels.
         grid_resolution: Grid resolution in degrees
     
     Returns:
@@ -308,6 +344,11 @@ def plot_meridional_slices(
         raise ValueError(
             "Model must have 'statistics' attribute for proper coordinate normalization."
         )
+    
+    # Use standard ERA5 pressure levels if not specified
+    if pressure_levels is None:
+        pressure_levels = [850, 825, 800, 775, 750, 700, 650, 600, 550, 500, 
+                          450, 400, 350, 300, 250, 225, 200]
     
     # Create lat-pressure grid at fixed longitude
     grid_coords, norm_grid_coords, n_lats = _create_meridional_grid(
@@ -325,11 +366,8 @@ def plot_meridional_slices(
 
     # Denormalize predictions
     for i in range(len(var_names)):
-        var_min = statistics[var_names[i]][0]  # min value
-        var_max = statistics[var_names[i]][1]  # max value
-        
-        # Reverse the [-1, 1] normalization: x_norm = 2*(x - min)/(max - min) - 1
-        # So: x = (x_norm + 1) * (max - min) / 2 + min
+        var_min = statistics[var_names[i]][0]
+        var_max = statistics[var_names[i]][1]
         preds[:, i] = (preds[:, i] + 1.0) * (var_max - var_min) / 2.0 + var_min
     
     # Create figures for each variable
@@ -340,7 +378,7 @@ def plot_meridional_slices(
         pred_field = preds[:, i].reshape(n_lats, n_pressure).cpu().numpy()
         
         fig = _create_meridional_plot(
-            pred_field, var_name, longitude, pressure_levels, grid_resolution
+            pred_field, var_name, longitude, pressure_levels, grid_resolution, True
         )
         figures[var_name] = fig
     
@@ -351,7 +389,7 @@ def plot_zonal_mean(
     model,
     batch: Dict,
     var_names: List[str],
-    pressure_levels: List[int],
+    pressure_levels: Optional[List[int]] = None,
     grid_resolution: Optional[dict] = None
 ) -> Dict[str, plt.Figure]:
     """
@@ -361,7 +399,7 @@ def plot_zonal_mean(
         model: Lightning module
         batch: Validation batch (used only for timestep reference)
         var_names: List of variable names
-        pressure_levels: List of pressure levels
+        pressure_levels: List of pressure levels in hPa. If None, uses standard ERA5 levels.
         grid_resolution: Grid resolution in degrees
     
     Returns:
@@ -379,6 +417,11 @@ def plot_zonal_mean(
             "Model must have 'statistics' attribute for proper coordinate normalization."
         )
 
+    # Use standard ERA5 pressure levels if not specified
+    if pressure_levels is None:
+        pressure_levels = [850, 825, 800, 775, 750, 700, 650, 600, 550, 500, 
+                          450, 400, 350, 300, 250, 225, 200]
+
     # Create full lat-lon-pressure grid
     grid_coords, norm_grid_coords, n_lats, n_lons, n_pressure = _create_full_grid(
         pressure_levels,
@@ -394,11 +437,8 @@ def plot_zonal_mean(
 
     # Denormalize predictions
     for i in range(len(var_names)):
-        var_min = statistics[var_names[i]][0]  # min value
-        var_max = statistics[var_names[i]][1]  # max value
-        
-        # Reverse the [-1, 1] normalization: x_norm = 2*(x - min)/(max - min) - 1
-        # So: x = (x_norm + 1) * (max - min) / 2 + min
+        var_min = statistics[var_names[i]][0]
+        var_max = statistics[var_names[i]][1]
         preds[:, i] = (preds[:, i] + 1.0) * (var_max - var_min) / 2.0 + var_min
     
     figures = {}
@@ -410,7 +450,7 @@ def plot_zonal_mean(
         pred_zonal = pred_field.mean(axis=0)  # [n_lats, n_pressure]
         
         fig = _create_zonal_mean_plot(
-            pred_zonal, var_name, pressure_levels, grid_resolution
+            pred_zonal, var_name, pressure_levels, grid_resolution, True
         )
         figures[var_name] = fig
     
@@ -692,11 +732,10 @@ def _create_horizontal_plot(
     extent = [-180, 180, -90, 90]
     
     # Determine colormap and limits based on variable
-    if use_ground_truth_ranges and var_name in GROUND_TRUTH_RANGES and pressure in GROUND_TRUTH_RANGES[var_name]:
+    if use_ground_truth_ranges and var_name in GROUND_TRUTH_RANGES and pressure in GROUND_TRUTH_RANGES[var_name]['horizontal']:
         # Use ground truth ranges for consistent comparison
-        ranges = GROUND_TRUTH_RANGES[var_name][pressure]
-        vmin = ranges["vmin"]
-        vmax = ranges["vmax"]
+        vmin = GROUND_TRUTH_RANGES[var_name]["horizontal"][pressure]["vmin"]
+        vmax = GROUND_TRUTH_RANGES[var_name]["horizontal"][pressure]["vmax"]
         
         # Still need to determine colormap
         if var_name in ['u', 'v']:
@@ -751,7 +790,8 @@ def _create_meridional_plot(
     var_name: str,
     longitude: int,
     pressure_levels: List[int],
-    resolution: Optional[dict] = None
+    resolution: Optional[dict] = None,
+    use_ground_truth_ranges: bool = True
 ) -> plt.Figure:
     """Create meridional cross-section plot."""
     if resolution is None:
@@ -762,17 +802,28 @@ def _create_meridional_plot(
     lats = np.arange(-90, 90+resolution['latitude'], resolution['latitude'])
     pressures = np.array(pressure_levels)
     
-    # Determine colormap
-    if var_name in ['u', 'v']:
-        cmap = 'RdBu_r'
-        vmax = np.abs(pred_field).max()
-        vmin = -vmax
+    # Determine colormap (matching ground truth visualization)
+    cmap = _get_colormap(var_name)
+    
+    # Determine vmin/vmax
+    if use_ground_truth_ranges and var_name in GROUND_TRUTH_RANGES and "vertical" in GROUND_TRUTH_RANGES[var_name]:
+        vmin = GROUND_TRUTH_RANGES[var_name]["vertical"]["vmin"]
+        vmax = GROUND_TRUTH_RANGES[var_name]["vertical"]["vmax"]
     else:
-        cmap = 'viridis'
-        vmin, vmax = None, None
+        # Fall back to data-based limits
+        if var_name in ['u', 'v']:
+            vmax = np.abs(pred_field).max()
+            vmin = -vmax
+        elif var_name == 'w':
+            vmin = np.nanpercentile(pred_field, 1)
+            vmax = np.nanpercentile(pred_field, 99)
+        else:
+            vmin = pred_field.min()
+            vmax = pred_field.max()
     
     # Contour plot
-    im = ax.contourf(lats, pressures, pred_field.T, levels=20, cmap=cmap, vmin=vmin, vmax=vmax)
+    levels = np.linspace(vmin, vmax, 21)  # 21 values creates 20 intervals
+    im = ax.contourf(lats, pressures, pred_field.T, levels=levels, cmap=cmap, extend='both')
     ax.set_title(f'{var_name.upper()} Meridional Section @ {longitude}°E')
     ax.set_xlabel('Latitude (°)')
     ax.set_ylabel('Pressure (hPa)')
@@ -788,7 +839,8 @@ def _create_zonal_mean_plot(
     pred_zonal: np.ndarray,
     var_name: str,
     pressure_levels: List[int],
-    resolution: Optional[dict] = None
+    resolution: Optional[dict] = None,
+    use_ground_truth_ranges: bool = True
 ) -> plt.Figure:
     """Create zonal mean plot."""
     if resolution is None:
@@ -799,17 +851,28 @@ def _create_zonal_mean_plot(
     lats = np.arange(-90, 90+resolution['latitude'], resolution['latitude'])
     pressures = np.array(pressure_levels)
     
-    # Determine colormap
-    if var_name in ['u', 'v']:
-        cmap = 'RdBu_r'
-        vmax = np.abs(pred_zonal).max()
-        vmin = -vmax
+    # Determine colormap (matching ground truth visualization)
+    cmap = _get_colormap(var_name)
+    
+    # Determine vmin/vmax
+    if use_ground_truth_ranges and var_name in GROUND_TRUTH_RANGES and "vertical" in GROUND_TRUTH_RANGES[var_name]:
+        vmin = GROUND_TRUTH_RANGES[var_name]["vertical"]["vmin"]
+        vmax = GROUND_TRUTH_RANGES[var_name]["vertical"]["vmax"]
     else:
-        cmap = 'viridis'
-        vmin, vmax = None, None
+        # Fall back to data-based limits
+        if var_name in ['u', 'v']:
+            vmax = np.abs(pred_zonal).max()
+            vmin = -vmax
+        elif var_name == 'w':
+            vmin = np.nanpercentile(pred_zonal, 1)
+            vmax = np.nanpercentile(pred_zonal, 99)
+        else:
+            vmin = pred_zonal.min()
+            vmax = pred_zonal.max()
     
     # Contour plot
-    im = ax.contourf(lats, pressures, pred_zonal.T, levels=20, cmap=cmap, vmin=vmin, vmax=vmax)
+    levels = np.linspace(vmin, vmax, 21)  # 21 values creates 20 intervals
+    im = ax.contourf(lats, pressures, pred_zonal.T, levels=levels, cmap=cmap, extend='both')
     ax.set_title(f'{var_name.upper()} Zonal Mean')
     ax.set_xlabel('Latitude (°)')
     ax.set_ylabel('Pressure (hPa)')
@@ -819,6 +882,20 @@ def _create_zonal_mean_plot(
     
     plt.tight_layout()
     return fig
+
+
+def _get_colormap(var_name: str) -> str:
+    """Get appropriate colormap for variable (matching ground truth visualization)."""
+    if var_name in ['u', 'v']:
+        return 'RdBu_r'
+    elif var_name == 'uv':
+        return 'cet_CET_R3'
+    elif var_name == 't':
+        return 'cet_CET_R1'
+    elif var_name == 'z':
+        return 'cet_rainbow'
+    else:
+        return 'viridis'
 
 
 def _get_var_label(var_name: str) -> str:

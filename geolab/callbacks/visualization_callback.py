@@ -177,7 +177,7 @@ class AtmosphericVisualizationCallback(Callback):
                     val_batch,
                     lon,
                     self.var_names,
-                    self.pressure_levels,
+                    None,           # Uses all 17 ERA5 pressure levels
                     self.grid_resolution
                 )
                 for var_name, fig in figs.items():
@@ -197,7 +197,7 @@ class AtmosphericVisualizationCallback(Callback):
                 pl_module,
                 val_batch,
                 self.var_names,
-                self.pressure_levels,
+                None,               # Uses all 17 ERA5 pressure levels
                 self.grid_resolution
             )
             for var_name, fig in figs.items():

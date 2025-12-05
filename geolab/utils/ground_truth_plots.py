@@ -16,34 +16,70 @@ import json
 # Ground truth value ranges - computed once, used for all plots
 GROUND_TRUTH_RANGES = {
     "t": {
-        200: {"vmin": 193.58, "vmax": 231.82},
-        500: {"vmin": 223.57, "vmax": 275.73},
-        850: {"vmin": 225.91, "vmax": 305.72}
+        "horizontal": {  # For horizontal slices at specific pressure levels
+            200: {"vmin": 193.58, "vmax": 231.82},
+            500: {"vmin": 223.57, "vmax": 275.73},
+            850: {"vmin": 225.91, "vmax": 305.72}
+        },
+        "vertical": {  # For meridional and zonal plots (all pressure levels)
+            "vmin": 195.82,  # Min across all levels
+            "vmax": 293.45   # Max across all levels
+        }
     },
     "u": {
-        200: {"vmin": -92.99, "vmax": 92.99},
-        500: {"vmin": -61.90, "vmax": 61.90},
-        850: {"vmin": -51.97, "vmax": 51.97}
+        "horizontal": {
+            200: {"vmin": -92.99, "vmax": 92.99},
+            500: {"vmin": -61.90, "vmax": 61.90},
+            850: {"vmin": -51.97, "vmax": 51.97}
+        },
+        "vertical": {
+            "vmin": -68.21,  # Use the most extreme symmetric range
+            "vmax": 68.21
+        }
     },
     "v": {
-        200: {"vmin": -63.03, "vmax": 63.03},
-        500: {"vmin": -52.41, "vmax": 52.41},
-        850: {"vmin": -54.49, "vmax": 54.49}
+        "horizontal": {
+            200: {"vmin": -63.03, "vmax": 63.03},
+            500: {"vmin": -52.41, "vmax": 52.41},
+            850: {"vmin": -54.49, "vmax": 54.49}
+        },
+        "vertical": {
+            "vmin": -56.76,
+            "vmax": 56.76
+        }
     },
     "z": {
-        200: {"vmin": 102408.81, "vmax": 122770.81},
-        500: {"vmin": 45832.16, "vmax": 58609.67},
-        850: {"vmin": 6847.90, "vmax": 16639.25}
+        "horizontal": {
+            200: {"vmin": 102408.81, "vmax": 122770.81},
+            500: {"vmin": 45832.16, "vmax": 58609.67},
+            850: {"vmin": 6847.90, "vmax": 16639.25}
+        },
+        "vertical": {
+            "vmin": 8399.23,   
+            "vmax": 122101.88 
+        }
     },
     "w": {
-        200: {"vmin": -9.78, "vmax": 2.07},
-        500: {"vmin": -14.14, "vmax": 4.63},
-        850: {"vmin": -11.98, "vmax": 8.34}
+        "horizontal": {
+            200: {"vmin": -0.26, "vmax": 0.20},
+            500: {"vmin": -0.77, "vmax": 0.45},
+            850: {"vmin": -0.72, "vmax": 0.67}
+        },
+        "vertical": {
+            "vmin": -0.64,  
+            "vmax": 0.40
+        }
     },
     "uv": {
-        200: {"vmin": 0.0, "vmax": 93.32},
-        500: {"vmin": 0.0, "vmax": 66.51},
-        850: {"vmin": 0.0, "vmax": 54.49}
+        "horizontal": {
+            200: {"vmin": 0.0, "vmax": 93.32},
+            500: {"vmin": 0.0, "vmax": 66.51},
+            850: {"vmin": 0.0, "vmax": 54.49}
+        },
+        "vertical": {
+            "vmin": 0.0,
+            "vmax": 93.32
+        }
     }
 }
 
@@ -140,10 +176,15 @@ def plot_era5_horizontal_slices(
                 continue
             
             # Determine vmin/vmax to use for this variable/pressure
-            if use_fixed_ranges and var_name in GROUND_TRUTH_RANGES and pressure in GROUND_TRUTH_RANGES[var_name]:
-                vmin = GROUND_TRUTH_RANGES[var_name][pressure]["vmin"]
-                vmax = GROUND_TRUTH_RANGES[var_name][pressure]["vmax"]
-                print(f"  Using fixed ranges: [{vmin:.4f}, {vmax:.4f}]")
+            if use_fixed_ranges and var_name in GROUND_TRUTH_RANGES:
+                # Try to get horizontal ranges for this specific pressure level
+                if "horizontal" in GROUND_TRUTH_RANGES[var_name] and pressure in GROUND_TRUTH_RANGES[var_name]["horizontal"]:
+                    vmin = GROUND_TRUTH_RANGES[var_name]["horizontal"][pressure]["vmin"]
+                    vmax = GROUND_TRUTH_RANGES[var_name]["horizontal"][pressure]["vmax"]
+                    print(f"  Using fixed horizontal ranges: [{vmin:.4f}, {vmax:.4f}]")
+                else:
+                    vmin, vmax = None, None
+                    print(f"  No fixed ranges available, using auto-scaling per timestep")
             elif compute_ranges_first:
                 vmin = value_ranges[var_name][f"{pressure}hPa"]["vmin"]
                 vmax = value_ranges[var_name][f"{pressure}hPa"]["vmax"]
@@ -216,6 +257,476 @@ def plot_era5_horizontal_slices(
     
     return value_ranges
 
+def plot_era5_meridional_slices(
+    data_path: str,
+    var_names: List[str],
+    longitudes: List[int] = [-180, -90, 0, 90],
+    output_dir: str = "./ground_truth_plots",
+    time_dim: str = "valid_time",
+    pressure_dim: str = "pressure_level",
+    lat_dim: str = "latitude",
+    lon_dim: str = "longitude",
+    compute_ranges_first: bool = False
+) -> Dict:
+    """
+    Generate meridional slice plots from ERA5 data showing full vertical structure.
+    
+    Note: Uses ALL pressure levels available in the dataset, not filtered to specific levels.
+    """
+    print(f"Loading ERA5 data from {data_path}")
+    data = xr.open_dataset(data_path)
+    
+    # Adjust longitude to [-180, 180] if needed
+    if data[lon_dim].min() >= 0:
+        data[lon_dim] = (data[lon_dim] + 180) % 360 - 180
+        data = data.sortby(lon_dim)
+    
+    output_path = Path(output_dir) / "meridional"
+    output_path.mkdir(parents=True, exist_ok=True)
+    
+    time_steps = data[time_dim].values
+    n_times = len(time_steps)
+    
+    # Get all available pressure levels from the dataset
+    available_pressures = data[pressure_dim].values
+    
+    print(f"Found {n_times} time steps")
+    print(f"Processing variables: {var_names}")
+    print(f"Longitudes: {longitudes}°")
+    print(f"Using all available pressure levels: {available_pressures}")
+    
+    value_ranges = {}
+    
+    # First pass: compute ranges if requested
+    if compute_ranges_first:
+        print("\n" + "="*80)
+        print("FIRST PASS: Computing value ranges for meridional slices")
+        print("="*80)
+        value_ranges = _compute_meridional_ranges(
+            data, var_names, longitudes, time_steps,
+            time_dim, pressure_dim, lat_dim, lon_dim
+        )
+    
+    # Process each variable
+    for var_name in var_names:
+        if var_name not in data.variables:
+            print(f"Warning: Variable '{var_name}' not found. Skipping.")
+            continue
+        
+        var_dir = output_path / var_name
+        var_dir.mkdir(exist_ok=True)
+        
+        if not compute_ranges_first:
+            value_ranges[var_name] = {}
+        
+        # Process each longitude
+        for longitude in longitudes:
+            lon_dir = var_dir / f"{longitude}E"
+            lon_dir.mkdir(exist_ok=True)
+            
+            print(f"\nProcessing {var_name} @ {longitude}°E...")
+            
+            # Select data at this longitude (nearest)
+            try:
+                data_lon = data[var_name].sel({lon_dim: longitude}, method='nearest')
+            except KeyError:
+                print(f"  Longitude {longitude} not found. Skipping.")
+                continue
+            
+            # Determine vmin/vmax
+            if var_name in GROUND_TRUTH_RANGES and "vertical" in GROUND_TRUTH_RANGES[var_name]:
+                vmin = GROUND_TRUTH_RANGES[var_name]["vertical"]["vmin"]
+                vmax = GROUND_TRUTH_RANGES[var_name]["vertical"]["vmax"]
+                print(f"  Using vertical ranges: [{vmin:.4f}, {vmax:.4f}]")
+            elif compute_ranges_first:
+                vmin = value_ranges[var_name][f"{longitude}E"]["vmin"]
+                vmax = value_ranges[var_name][f"{longitude}E"]["vmax"]
+            else:
+                vmin, vmax = None, None
+            
+            # Process each time step
+            for idx, t in enumerate(time_steps):
+                data_t = data_lon.sel({time_dim: t})
+                
+                fig = _create_meridional_ground_truth_plot(
+                    data_t,
+                    var_name,
+                    longitude,
+                    t,
+                    lat_dim,
+                    pressure_dim,
+                    vmin=vmin,
+                    vmax=vmax
+                )
+                
+                time_str = str(t).replace(':', '-').replace(' ', '_')
+                filename = f"{var_name}_{longitude}E_t{idx:03d}_{time_str}.png"
+                filepath = lon_dir / filename
+                
+                fig.savefig(filepath, dpi=150, bbox_inches='tight')
+                plt.close(fig)
+                
+                if (idx + 1) % 10 == 0:
+                    print(f"  Processed {idx + 1}/{n_times} time steps")
+            
+            print(f"  Completed {var_name} @ {longitude}°E")
+
+    # Print summary and save ranges if computed
+    if compute_ranges_first:
+        print("\n" + "="*80)
+        print("VALUE RANGES SUMMARY (MERIDIONAL)")
+        print("="*80)
+        for var_name, lon_data in value_ranges.items():
+            print(f"\n{var_name.upper()}:")
+            for lon_str, ranges in lon_data.items():
+                print(f"  {lon_str}:")
+                print(f"    Plot range: vmin={ranges['vmin']:.4f}, vmax={ranges['vmax']:.4f}")
+                if 'data_min' in ranges:
+                    print(f"    Data range: [{ranges['data_min']:.4f}, {ranges['data_max']:.4f}]")
+        
+        # Save to JSON file
+        json_path = output_path.parent / "meridional_value_ranges.json"
+        with open(json_path, 'w') as f:
+            json.dump(value_ranges, f, indent=2)
+        print(f"\nMeridional value ranges saved to {json_path}")
+    
+    return value_ranges
+
+
+def plot_era5_zonal_mean(
+    data_path: str,
+    var_names: List[str],
+    output_dir: str = "./ground_truth_plots",
+    time_dim: str = "valid_time",
+    pressure_dim: str = "pressure_level",
+    lat_dim: str = "latitude",
+    lon_dim: str = "longitude",
+    compute_ranges_first: bool = False
+) -> Dict:
+    """
+    Generate zonal mean plots from ERA5 data showing full vertical structure.
+    
+    Note: Uses ALL pressure levels available in the dataset, not filtered to specific levels.
+    """
+    print(f"Loading ERA5 data from {data_path}")
+    data = xr.open_dataset(data_path)
+    
+    output_path = Path(output_dir) / "zonal_mean"
+    output_path.mkdir(parents=True, exist_ok=True)
+    
+    time_steps = data[time_dim].values
+    n_times = len(time_steps)
+    
+    # Get all available pressure levels from the dataset
+    available_pressures = data[pressure_dim].values
+    
+    print(f"Found {n_times} time steps")
+    print(f"Processing variables: {var_names}")
+    print(f"Using all available pressure levels: {available_pressures}")
+    
+    value_ranges = {}
+    
+    # First pass: compute ranges if requested
+    if compute_ranges_first:
+        print("\n" + "="*80)
+        print("FIRST PASS: Computing value ranges for zonal means")
+        print("="*80)
+        value_ranges = _compute_zonal_mean_ranges(
+            data, var_names, time_steps,
+            time_dim, pressure_dim, lat_dim, lon_dim
+        )
+    
+    # Process each variable
+    for var_name in var_names:
+        if var_name not in data.variables:
+            print(f"Warning: Variable '{var_name}' not found. Skipping.")
+            continue
+        
+        var_dir = output_path / var_name
+        var_dir.mkdir(exist_ok=True)
+        
+        if not compute_ranges_first:
+            value_ranges[var_name] = {}
+        
+        print(f"\nProcessing {var_name} zonal mean...")
+        
+        # Determine vmin/vmax
+        if var_name in GROUND_TRUTH_RANGES and "vertical" in GROUND_TRUTH_RANGES[var_name]:
+            vmin = GROUND_TRUTH_RANGES[var_name]["vertical"]["vmin"]
+            vmax = GROUND_TRUTH_RANGES[var_name]["vertical"]["vmax"]
+            print(f"  Using vertical ranges: [{vmin:.4f}, {vmax:.4f}]")
+        elif compute_ranges_first:
+            vmin = value_ranges[var_name]["vmin"]
+            vmax = value_ranges[var_name]["vmax"]
+        else:
+            vmin, vmax = None, None
+        
+        # Process each time step
+        for idx, t in enumerate(time_steps):
+            data_t = data[var_name].sel({time_dim: t})
+            
+            # Compute zonal mean (average over longitude)
+            data_zonal = data_t.mean(dim=lon_dim)
+            
+            fig = _create_zonal_mean_ground_truth_plot(
+                data_zonal,
+                var_name,
+                t,
+                lat_dim,
+                pressure_dim,
+                vmin=vmin,
+                vmax=vmax
+            )
+            
+            time_str = str(t).replace(':', '-').replace(' ', '_')
+            filename = f"{var_name}_zonal_t{idx:03d}_{time_str}.png"
+            filepath = var_dir / filename
+            
+            fig.savefig(filepath, dpi=150, bbox_inches='tight')
+            plt.close(fig)
+            
+            if (idx + 1) % 10 == 0:
+                print(f"  Processed {idx + 1}/{n_times} time steps")
+        
+        print(f"  Completed {var_name} zonal mean")
+
+    # Print summary and save ranges if computed
+    if compute_ranges_first:
+        print("\n" + "="*80)
+        print("VALUE RANGES SUMMARY (ZONAL MEAN)")
+        print("="*80)
+        for var_name, ranges in value_ranges.items():
+            print(f"\n{var_name.upper()}:")
+            print(f"  Plot range: vmin={ranges['vmin']:.4f}, vmax={ranges['vmax']:.4f}")
+            if 'data_min' in ranges:
+                print(f"  Data range: [{ranges['data_min']:.4f}, {ranges['data_max']:.4f}]")
+        
+        # Save to JSON file
+        json_path = output_path.parent / "zonal_mean_value_ranges.json"
+        with open(json_path, 'w') as f:
+            json.dump(value_ranges, f, indent=2)
+        print(f"\nZonal mean value ranges saved to {json_path}")
+    
+    return value_ranges
+
+
+def _compute_meridional_ranges(
+    data: xr.Dataset,
+    var_names: List[str],
+    longitudes: List[int],
+    time_steps,
+    time_dim: str,
+    pressure_dim: str,
+    lat_dim: str,
+    lon_dim: str
+) -> Dict:
+    """Compute value ranges for meridional slices."""
+    value_ranges = {}
+    
+    for var_name in var_names:
+        if var_name not in data.variables:
+            continue
+        
+        value_ranges[var_name] = {}
+        
+        for longitude in longitudes:
+            try:
+                data_lon = data[var_name].sel({lon_dim: longitude}, method='nearest')
+            except KeyError:
+                continue
+            
+            print(f"  Computing ranges for {var_name} @ {longitude}°E...")
+            
+            all_values = []
+            for t in time_steps:
+                data_t = data_lon.sel({time_dim: t})
+                all_values.append(data_t.values)
+            
+            all_values_flat = np.concatenate([v.flatten() for v in all_values])
+            vmin_data = float(np.nanmin(all_values_flat))
+            vmax_data = float(np.nanmax(all_values_flat))
+            
+            if var_name in ['u', 'v']:
+                vmax = float(np.nanmax(np.abs(all_values_flat)))
+                vmin = -vmax
+            elif var_name == 'w':
+                vmin = float(np.nanpercentile(all_values_flat, 1))
+                vmax = float(np.nanpercentile(all_values_flat, 99))
+            else:
+                vmin = vmin_data
+                vmax = vmax_data
+            
+            value_ranges[var_name][f"{longitude}E"] = {
+                'vmin': vmin,
+                'vmax': vmax,
+                'data_min': vmin_data,
+                'data_max': vmax_data
+            }
+    
+    return value_ranges
+
+
+def _compute_zonal_mean_ranges(
+    data: xr.Dataset,
+    var_names: List[str],
+    time_steps,
+    time_dim: str,
+    pressure_dim: str,
+    lat_dim: str,
+    lon_dim: str
+) -> Dict:
+    """Compute value ranges for zonal means."""
+    value_ranges = {}
+    
+    for var_name in var_names:
+        if var_name not in data.variables:
+            continue
+        
+        print(f"  Computing ranges for {var_name} zonal mean...")
+        
+        all_values = []
+        for t in time_steps:
+            data_t = data[var_name].sel({time_dim: t})
+            data_zonal = data_t.mean(dim=lon_dim)
+            all_values.append(data_zonal.values)
+        
+        all_values_flat = np.concatenate([v.flatten() for v in all_values])
+        vmin_data = float(np.nanmin(all_values_flat))
+        vmax_data = float(np.nanmax(all_values_flat))
+        
+        if var_name in ['u', 'v']:
+            vmax = float(np.nanmax(np.abs(all_values_flat)))
+            vmin = -vmax
+        elif var_name == 'w': 
+            vmin = float(np.nanpercentile(all_values_flat, 1))
+            vmax = float(np.nanpercentile(all_values_flat, 99))
+        else:
+            vmin = vmin_data
+            vmax = vmax_data
+        
+        value_ranges[var_name] = {
+            'vmin': vmin,
+            'vmax': vmax,
+            'data_min': vmin_data,
+            'data_max': vmax_data
+        }
+    
+    return value_ranges
+
+
+def _create_meridional_ground_truth_plot(
+    data_array: xr.DataArray,
+    var_name: str,
+    longitude: int,
+    timestamp,
+    lat_dim: str = "latitude",
+    pressure_dim: str = "pressure_level",
+    vmin: Optional[float] = None,
+    vmax: Optional[float] = None
+) -> plt.Figure:
+    """Create meridional cross-section plot."""
+    fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+    
+    # Get data
+    lats = data_array[lat_dim].values
+    pressures = data_array[pressure_dim].values
+    field = data_array.values
+    
+    # Determine colormap
+    cmap = _get_colormap(var_name)
+    
+    if vmin is None or vmax is None:
+        field_vmin, field_vmax = _get_field_limits(var_name, field)
+        if vmin is None:
+            vmin = field_vmin
+        if vmax is None:
+            vmax = field_vmax
+    
+    # Check field dimensions and arrange correctly
+    # contourf expects: contourf(X, Y, Z) where Z has shape [len(Y), len(X)]
+    # X = lats, Y = pressures, so Z should be [len(pressures), len(lats)]
+    
+    # print(f"Debug: lats shape = {lats.shape}, pressures shape = {pressures.shape}, field shape = {field.shape}")
+    
+    # Field could be either [pressure, lat] or [lat, pressure]
+    if field.shape[0] == len(pressures) and field.shape[1] == len(lats):
+        # Field is [pressure, lat] - this is what contourf expects
+        field_for_plot = field
+    elif field.shape[0] == len(lats) and field.shape[1] == len(pressures):
+        # Field is [lat, pressure] - need to transpose
+        field_for_plot = field.T
+    else:
+        raise ValueError(f"Field shape {field.shape} doesn't match lats {len(lats)} and pressures {len(pressures)}")
+    
+    # Contour plot
+    levels = np.linspace(vmin, vmax, 21)  # 21 values creates 20 intervals
+    im = ax.contourf(lats, pressures, field_for_plot, levels=levels, cmap=cmap, extend='both')
+    ax.set_title(f'{var_name.upper()} Meridional Section @ {longitude}°E — {timestamp}')
+    ax.set_xlabel('Latitude (°)')
+    ax.set_ylabel('Pressure (hPa)')
+    ax.invert_yaxis()
+    ax.grid(True, alpha=0.3)
+    plt.colorbar(im, ax=ax, label=_get_var_label(var_name))
+    
+    plt.tight_layout()
+    return fig
+
+
+def _create_zonal_mean_ground_truth_plot(
+    data_array: xr.DataArray,
+    var_name: str,
+    timestamp,
+    lat_dim: str = "latitude",
+    pressure_dim: str = "pressure_level",
+    vmin: Optional[float] = None,
+    vmax: Optional[float] = None
+) -> plt.Figure:
+    """Create zonal mean plot."""
+    fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+    
+    # Get data
+    lats = data_array[lat_dim].values
+    pressures = data_array[pressure_dim].values
+    field = data_array.values
+    
+    # Determine colormap
+    cmap = _get_colormap(var_name)
+    
+    if vmin is None or vmax is None:
+        field_vmin, field_vmax = _get_field_limits(var_name, field)
+        if vmin is None:
+            vmin = field_vmin
+        if vmax is None:
+            vmax = field_vmax
+    
+    # Check field dimensions and arrange correctly
+    # contourf expects: contourf(X, Y, Z) where Z has shape [len(Y), len(X)]
+    # X = lats, Y = pressures, so Z should be [len(pressures), len(lats)]
+    
+    # print(f"Debug: lats shape = {lats.shape}, pressures shape = {pressures.shape}, field shape = {field.shape}")
+    
+    # Field could be either [pressure, lat] or [lat, pressure]
+    if field.shape[0] == len(pressures) and field.shape[1] == len(lats):
+        # Field is [pressure, lat] - this is what contourf expects
+        field_for_plot = field
+    elif field.shape[0] == len(lats) and field.shape[1] == len(pressures):
+        # Field is [lat, pressure] - need to transpose
+        field_for_plot = field.T
+    else:
+        raise ValueError(f"Field shape {field.shape} doesn't match lats {len(lats)} and pressures {len(pressures)}")
+    
+    # Contour plot
+    levels = np.linspace(vmin, vmax, 21)  # 21 values creates 20 intervals
+    im = ax.contourf(lats, pressures, field_for_plot, levels=levels, cmap=cmap, extend='both')
+    ax.set_title(f'{var_name.upper()} Zonal Mean — {timestamp}')
+    ax.set_xlabel('Latitude (°)')
+    ax.set_ylabel('Pressure (hPa)')
+    ax.invert_yaxis()
+    ax.grid(True, alpha=0.3)
+    plt.colorbar(im, ax=ax, label=_get_var_label(var_name))
+    
+    plt.tight_layout()
+    return fig
 
 def _compute_value_ranges(
     data: xr.Dataset,
@@ -262,6 +773,10 @@ def _compute_value_ranges(
             elif var_name == 'uv':
                 vmin = 0.0
                 vmax = vmax_data
+            elif var_name == 'w': 
+                # Use percentile-based ranges to avoid outliers
+                vmin = float(np.nanpercentile(all_values_flat, 1))
+                vmax = float(np.nanpercentile(all_values_flat, 99))
             else:
                 vmin = vmin_data
                 vmax = vmax_data
@@ -416,11 +931,16 @@ def _create_wind_magnitude_plots(
             print(f"  Pressure level {pressure} not found. Skipping.")
             continue
         
-        # Determine vmin/vmax to use
-        if use_fixed_ranges and pressure in GROUND_TRUTH_RANGES.get('uv', {}):
-            vmin = GROUND_TRUTH_RANGES['uv'][pressure]["vmin"]
-            vmax = GROUND_TRUTH_RANGES['uv'][pressure]["vmax"]
-            print(f"  Using fixed ranges: [{vmin:.4f}, {vmax:.4f}]")
+        # Determine vmin/vmax to use - FIXED TO USE NEW STRUCTURE
+        if use_fixed_ranges and 'uv' in GROUND_TRUTH_RANGES:
+            # Try horizontal ranges first
+            if "horizontal" in GROUND_TRUTH_RANGES['uv'] and pressure in GROUND_TRUTH_RANGES['uv']["horizontal"]:
+                vmin = GROUND_TRUTH_RANGES['uv']["horizontal"][pressure]["vmin"]
+                vmax = GROUND_TRUTH_RANGES['uv']["horizontal"][pressure]["vmax"]
+                print(f"  Using fixed horizontal ranges: [{vmin:.4f}, {vmax:.4f}]")
+            else:
+                vmin, vmax = None, None
+                print(f"  No fixed ranges available, using auto-scaling per timestep")
         elif compute_ranges_first and pressure in computed_ranges:
             vmin = computed_ranges[pressure]['vmin']
             vmax = computed_ranges[pressure]['vmax']
@@ -515,6 +1035,7 @@ if __name__ == "__main__":
     DATA_PATH = r"C:\Users\freez\Downloads\dfda178b22d3772b9b9b0118dba68a02.nc"
     VARIABLES = ['t', 'u', 'v', 'z', 'w']
     PRESSURE_LEVELS = [200, 500, 850]
+    LONGITUDES = [-180]
     OUTPUT_DIR = "./ground_truth_plots"
     
     # Generate plots with fixed ranges (using GROUND_TRUTH_RANGES)
@@ -523,8 +1044,23 @@ if __name__ == "__main__":
         var_names=VARIABLES,
         pressure_levels=PRESSURE_LEVELS,
         output_dir=OUTPUT_DIR,
-        use_fixed_ranges=True,  # Use the predefined GROUND_TRUTH_RANGES
-        compute_ranges_first=False  # Don't compute ranges, use fixed ones
+        use_fixed_ranges=True,  
+        compute_ranges_first=False  
+    )
+
+    value_ranges_meridional = plot_era5_meridional_slices(
+        data_path=DATA_PATH,
+        var_names=VARIABLES,
+        longitudes=LONGITUDES,
+        output_dir=OUTPUT_DIR,
+        compute_ranges_first=False
+    )
+
+    value_ranges_zonal = plot_era5_zonal_mean(
+        data_path=DATA_PATH,
+        var_names=VARIABLES,
+        output_dir=OUTPUT_DIR,
+        compute_ranges_first=False
     )
     
     # Alternative: Compute ranges first, then plot with consistent colors
