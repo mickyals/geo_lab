@@ -34,6 +34,13 @@ class ERA5MultiData:
                         coord_data.shape,
                         str(coord_data.dtype)
                     )
+                    if c == "pressure_level":
+                        self.coordinates[c] = (
+                            coord_data * 100,
+                            coord_data.size,
+                            coord_data.shape,
+                            str(coord_data.dtype)
+                        ) # convert hPa to Pa
 
             self.variables = {
                 v: (

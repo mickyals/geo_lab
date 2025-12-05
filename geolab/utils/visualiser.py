@@ -504,7 +504,7 @@ def _create_horizontal_grid(
     if p_min == p_max:
         norm_grid[:, 2] = 1.0
     else:
-        norm_grid[:, 2] = 2.0 * (grid[:, 2] - p_min) / (p_max - p_min) - 1.0
+        norm_grid[:, 2] = 2.0 * ((grid[:, 2]*100) - p_min) / (p_max - p_min) - 1.0
 
     
     # Time: already in [0, 1] range, use as-is
@@ -584,7 +584,7 @@ def _create_meridional_grid(
     if pressure_min == pressure_max:
         norm_grid[:, 2] = 1.0
     else:
-        norm_grid[:, 2] = 2.0 * (grid[:, 2] - pressure_min) / (pressure_max - pressure_min) - 1.0
+        norm_grid[:, 2] = 2.0 * ((grid[:, 2] * 100) - pressure_min) / (pressure_max - pressure_min) - 1.0
     # Time: already in [0, 1] range
     norm_grid[:, 3] = timestep
     
@@ -664,7 +664,7 @@ def _create_full_grid(
     if pressure_min == pressure_max:
         norm_grid[:, 2] = 1.0
     else:
-        norm_grid[:, 2] = 2.0 * (grid[:, 2] - pressure_min) / (pressure_max - pressure_min) - 1.0
+        norm_grid[:, 2] = 2.0 * ((grid[:, 2] * 100) - pressure_min) / (pressure_max - pressure_min) - 1.0
     
     # Time: already in [0, 1] range
     norm_grid[:, 3] = timestep
