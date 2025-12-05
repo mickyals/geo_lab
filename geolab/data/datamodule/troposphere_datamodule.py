@@ -1,5 +1,6 @@
 from typing import Any, Dict, List, Optional, Tuple, Union
 from pathlib import Path
+import pickle
 
 import numpy as np
 import torch
@@ -31,9 +32,16 @@ class TroposphereDataModule(LightningDataModule):
             num_workers: int = 4,
             pin_memory: bool = True,
             persistent_workers: bool = False,
-            seed: int = 42
+            seed: int = 42,
+            statistics_dir: Optional[Union[str, Path]] = None,
     ):
-        """Initialize a TroposphereDataModule with improved memory management and error handling."""
+        """
+        Initialize a TroposphereDataModule with improved memory management.
+        
+        Args:
+            statistics_dir: Directory containing precomputed statistics files.
+                          If None, defaults to data_dir/statistics
+        """
         super().__init__()
         self.save_hyperparameters(ignore=["read_data_fn"])
 
@@ -59,6 +67,16 @@ class TroposphereDataModule(LightningDataModule):
         self.pin_memory = pin_memory
         self.persistent_workers = persistent_workers
         self.seed = seed
+        
+        # Set statistics directory
+        # Default to geolab/data/dataset/ where precompute_statistics.py lives
+        if statistics_dir is None:
+            # Assume this file is in geolab/data/datamodule/
+            # Navigate to geolab/data/dataset/
+            module_dir = Path(__file__).parent.parent / "dataset"
+            self.statistics_dir = module_dir
+        else:
+            self.statistics_dir = Path(statistics_dir)
 
         # Initialize dataset attributes
         self.train_dataset = None
@@ -70,59 +88,76 @@ class TroposphereDataModule(LightningDataModule):
 
         # Set random seed for reproducibility
         self.rng = np.random.default_rng(seed)
+        
+        # Load statistics immediately
+        self._load_statistics()
+
+    def _load_statistics(self):
+        """Load precomputed statistics based on time_idx_range configuration."""
+        # Determine which statistics file to load
+        if self.time_idx_range is not None and self.time_idx_range == [0, 1]:
+            config_name = "1_timeslice"
+        else:
+            config_name = "all_timeslices"
+        
+        stats_file = self.statistics_dir / f"statistics_{config_name}.pkl"
+        
+        if not stats_file.exists():
+            raise FileNotFoundError(
+                f"Statistics file not found: {stats_file}\n"
+                f"Please run precompute_statistics.py first to generate statistics files."
+            )
+        
+        print(f"Loading precomputed statistics from: {stats_file}")
+        
+        with open(stats_file, 'rb') as f:
+            self.statistics = pickle.load(f)
+        
+        print(f"Statistics loaded successfully! Keys: {self.statistics.keys()}")
 
     def prepare_data(self):
-        """Download or load ERA5 data if needed."""
-        print("Preparing ERA5 data...")
-
-        try:
-            era5 = ERA5MultiData(
-                data_dir=str(self.data_dir),
-                read_data_fn=self.read_data_fn,
-                variables=self.solution_vars
-            )
-
-            data, statistics = era5.run(
-                self.time_idx_range,
-                self.pressure_idx_range,
-                self.latitude_idx_range,
-                self.longitude_idx_range,
-                indexing=self.indexing,
-                num_samples=self.num_virtual,
-                include_virtual=self.include_virtual,
-                use_lhs=self.use_lhs
-            )
-
-            self._prepared_data = (data, statistics)
-            print("Data prepared successfully.")
-
-        except Exception as e:
-            raise RuntimeError(f"Failed to prepare data: {str(e)}") from e
+        """
+        Download or validate ERA5 data if needed.
+        
+        Note: Statistics are now loaded in __init__, so we don't need to
+        compute them here. This method now just validates data availability.
+        """
+        print("Validating ERA5 data availability...")
+        
+        # Just check that data directory exists and is accessible
+        if not self.data_dir.exists():
+            raise ValueError(f"Data directory does not exist: {self.data_dir}")
+        
+        print("Data directory validated.")
 
     def _load_and_prepare_data(self):
-        """Load and prepare data, handling both prepared and direct loading."""
-        if hasattr(self, '_prepared_data'):
-            data, statistics = self._prepared_data
-            del self._prepared_data
-        else:
-            print("Warning: prepare_data() was not run, loading data directly.")
-            era5 = ERA5MultiData(
-                data_dir=str(self.data_dir),
-                read_data_fn=self.read_data_fn,
-                variables=self.solution_vars
-            )
-            data, statistics = era5.run(
-                self.time_idx_range,
-                self.pressure_idx_range,
-                self.latitude_idx_range,
-                self.longitude_idx_range,
-                indexing=self.indexing,
-                num_samples=self.num_virtual,
-                include_virtual=self.include_virtual,
-                use_lhs=self.use_lhs
-            )
-
-        self.statistics = statistics
+        """
+        Load and prepare data using precomputed statistics.
+        
+        This method now only loads the data once since statistics are
+        already available from __init__.
+        """
+        print("Loading data for training...")
+        
+        era5 = ERA5MultiData(
+            data_dir=str(self.data_dir),
+            read_data_fn=self.read_data_fn,
+            variables=self.solution_vars
+        )
+        
+        # Load data with precomputed statistics
+        data, _ = era5.run(
+            self.time_idx_range,
+            self.pressure_idx_range,
+            self.latitude_idx_range,
+            self.longitude_idx_range,
+            indexing=self.indexing,
+            num_samples=self.num_virtual,
+            include_virtual=self.include_virtual,
+            use_lhs=self.use_lhs
+        )
+        
+        # Use precomputed statistics instead of newly computed ones
         self.full_data = data['data']
         self._data_counts = data['count']
 
