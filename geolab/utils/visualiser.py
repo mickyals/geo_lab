@@ -823,7 +823,10 @@ def _create_meridional_plot(
     
     # Contour plot
     levels = np.linspace(vmin, vmax, 21)  # 21 values creates 20 intervals
-    im = ax.contourf(lats, pressures, pred_field.T, levels=levels, cmap=cmap, extend='both')
+    if var_name == 'w':
+        im = ax.contourf(lats, pressures, pred_field.T, levels=levels, cmap=cmap, extend='both')
+    else:
+        im = ax.contourf(lats, pressures, pred_field.T, levels=levels, cmap=cmap)
     ax.set_title(f'{var_name.upper()} Meridional Section @ {longitude}°E')
     ax.set_xlabel('Latitude (°)')
     ax.set_ylabel('Pressure (hPa)')
@@ -872,7 +875,10 @@ def _create_zonal_mean_plot(
     
     # Contour plot
     levels = np.linspace(vmin, vmax, 21)  # 21 values creates 20 intervals
-    im = ax.contourf(lats, pressures, pred_zonal.T, levels=levels, cmap=cmap, extend='both')
+    if var_name == "w":
+        im = ax.contourf(lats, pressures, pred_zonal.T, levels=levels, cmap=cmap, extend='both')
+    else:
+        im = ax.contourf(lats, pressures, pred_zonal.T, levels=levels, cmap=cmap)
     ax.set_title(f'{var_name.upper()} Zonal Mean')
     ax.set_xlabel('Latitude (°)')
     ax.set_ylabel('Pressure (hPa)')
