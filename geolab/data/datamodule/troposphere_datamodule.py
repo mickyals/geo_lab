@@ -146,7 +146,7 @@ class TroposphereDataModule(LightningDataModule):
         )
         
         # Load data with precomputed statistics
-        data, _ = era5.run(
+        data = era5.run(
             self.time_idx_range,
             self.pressure_idx_range,
             self.latitude_idx_range,
