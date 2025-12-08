@@ -115,7 +115,7 @@ def arrange_plots(image_paths, var_name, plot_type='vertical', pressure=None,
     Parameters:
     -----------
     image_paths : list of str
-        Paths to PNG files (2-6 images, or 1-5 if ground_truth_path provided)
+        Paths to PNG files (2-7 images, or 1-6 if ground_truth_path provided)
     var_name : str
         Variable name (e.g., 'u', 'v', 't', 'z', 'w', 'uv')
     plot_type : str
@@ -147,8 +147,8 @@ def arrange_plots(image_paths, var_name, plot_type='vertical', pressure=None,
     # Add ground truth to total count if provided
     total_images = n_images + (1 if ground_truth_path else 0)
     
-    if total_images < 2 or total_images > 6:
-        raise ValueError(f"Total number of images must be between 2 and 6 (got {total_images})")
+    if total_images < 2 or total_images > 7:
+        raise ValueError(f"Total number of images must be between 2 and 7 (got {total_images})")
     
     # Validate subtitles
     if subtitles is not None and len(subtitles) != n_images:
@@ -189,12 +189,19 @@ def arrange_plots(image_paths, var_name, plot_type='vertical', pressure=None,
     # Determine grid layout
     if total_images <= 3:
         nrows, ncols = 1, total_images
+        layout = 'simple'
     elif total_images == 4:
         nrows, ncols = 2, 2
+        layout = 'simple'
     elif total_images == 5:
         nrows, ncols = 2, 3
-    else:  # total_images == 6
+        layout = 'simple'
+    elif total_images == 6:
         nrows, ncols = 2, 3
+        layout = 'simple'
+    else:  # total_images == 7
+        nrows, ncols = 2, 4
+        layout = 'irregular'  # 4 in first row, 3 in second
     
     # Create figure with space for colorbar on right
     fig = plt.figure(figsize=(5 * ncols + 0.5, 4 * nrows))
@@ -207,11 +214,25 @@ def arrange_plots(image_paths, var_name, plot_type='vertical', pressure=None,
     
     # Load and display each image
     for idx, (img_path, subtitle, is_gt) in enumerate(zip(all_paths, all_subtitles, is_ground_truth)):
-        row = idx // ncols
-        col = idx % ncols
+        # For 7 images: first 4 in row 0, next 3 centered in row 1
+        if layout == 'irregular' and total_images == 7:
+            if idx < 4:
+                row, col = 0, idx
+            else:
+                row, col = 1, idx - 4 + 0.5  # Center the 3 images in second row
+                # We need to handle this differently - use column span
+                ax = fig.add_subplot(gs[row, int(col):int(col)+1])
+                # Adjust position to center
+                pos = ax.get_position()
+                offset = 0.125  # Half of one column width to center 3 items in 4 columns
+                ax.set_position([pos.x0 + offset, pos.y0, pos.width, pos.height])
+        else:
+            row = idx // ncols
+            col = idx % ncols
+            ax = fig.add_subplot(gs[row, col])
         
-        # Create subplot
-        ax = fig.add_subplot(gs[row, col])
+        if layout != 'irregular' or idx < 4:
+            ax = fig.add_subplot(gs[row, col])
         
         # Load image
         img = mpimg.imread(img_path)
@@ -248,12 +269,18 @@ def arrange_plots(image_paths, var_name, plot_type='vertical', pressure=None,
         if subtitle:
             ax.set_title(subtitle, fontsize=10, pad=5)
     
-    # Hide any unused subplots
-    for idx in range(total_images, nrows * ncols):
-        row = idx // ncols
-        col = idx % ncols
-        ax = fig.add_subplot(gs[row, col])
+    # Hide any unused subplots (only for irregular layout)
+    if layout == 'irregular' and total_images == 7:
+        # Hide the extra column spot in the second row
+        ax = fig.add_subplot(gs[1, 3])
         ax.axis('off')
+    else:
+        # Hide any unused subplots for regular layouts
+        for idx in range(total_images, nrows * ncols):
+            row = idx // ncols
+            col = idx % ncols
+            ax = fig.add_subplot(gs[row, col])
+            ax.axis('off')
     
     # Add colorbar on right side spanning all rows
     cax = fig.add_subplot(gs[:, ncols])
@@ -276,29 +303,30 @@ def arrange_plots(image_paths, var_name, plot_type='vertical', pressure=None,
 if __name__ == "__main__":
     # Choose list of up to 6 plots from WandB (5 if used Ground Truth
     test_model_plots = [
-        'siren8_uv_850hPa_t0.png',
-        'siren8_z_850hPa_t0.png',
-        'siren8_u_850hPa_t0.png',
-        'siren8_w_850hPa_t0.png',
-        'siren8_w_850hPa_t0.png'
+        'mlp03_200hPa_z.png',
+        'mlp07_200hPa_z.png',
+        'mlp05_200hPa_z.png',
+        'mlp08_200hPa_z.png',
+        'siren10_200hPa_z.png',
+        'siren13_200hPa_z.png'
     ]
-    model_subtitles = ['Siren Wind Magnitude', 'Siren Geopotential', 'Siren Zonal Wind',
-                    'Siren Vertical Velocity', 'Siren Vertical Velocity']
+    model_subtitles = ['MLP', 'MLP+PINN', 'MLP+FF',
+                    'MLP+PINN+FF', 'SIREN', 'SIREN+PINN']
 
     # Optionally, specify ground truth to compare (will always go first)
-    ground_plot = 'ground_t_850hPa_t0.png'
-    ground_subtitle = 'ERA5 Temperature'
+    ground_plot = 'ground_z_200hPa.png'
+    ground_subtitle = 'ERA5 Ground Truth'
     
     # Combined plot parameters
-    title = 'Test Comparison'
+    title = 'Geopotential (z) at 200hPa Model Comparison'
     plot_type = 'horizontal'  # horizontal or vertical
-    pressure = 850  # if horizontal, specify pressure
-    var_name = 't'  # specify any output variable (t, u, v, w, z, uv)
-    output_path='test_output_6.png'
+    pressure = 200  # if horizontal, specify pressure
+    var_name = 'z'  # specify any output variable (t, u, v, w, z, uv)
+    output_path='200hPa_z_comparison.png'
 
     arrange_plots(
         image_paths=test_model_plots,
-        var_name='t',
+        var_name=var_name,
         plot_type=plot_type,
         pressure=pressure,
         subtitles=model_subtitles,
