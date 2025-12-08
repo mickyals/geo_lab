@@ -30,7 +30,9 @@ class FCNLayer(nn.Module):
             elif init_type == 'normal':
                 nn.init.xavier_normal_(self.layer.weight)
             else:
-                raise ValueError(f"Invalid init_type: {self.init_type}")
+                raise ValueError(f"Invalid init_type: {init_type}")
+            if self.layer.bias is not None:
+                nn.init.zeros_(self.layer.bias)
 
 
     def forward(self, x):

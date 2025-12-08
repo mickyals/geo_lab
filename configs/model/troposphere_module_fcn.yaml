@@ -1,0 +1,35 @@
+_target_: geolab.models.modules.troposphere_module.TroposhpereLightningModule
+
+# Model architecture
+model_name: FCN
+N_in_features: 4  # longitude, latitude, pressure_level, time
+N_out_features: 4  # w, u, z, v
+N_hidden_features: 128
+N_hidden_layers: 5
+position_encoder_type: gaussian  # gaussian, positional, basic, null if not to include
+mapping_dim: 128  # mapping dimension for positional encoding
+scale: 3.0  # scale for positional encoding
+
+# Model-specific parameters for FCN
+model_params:
+  activation: relu  # relu, silu, tanh
+  bias: true
+  init_type: uniform  # uniform, normal
+
+# Optimizer configuration
+optimizer_name: Adam
+optimizer_config:
+  lr: 1e-4
+  weight_decay: 1e-5
+
+# Scheduler configuration
+scheduler_name: null #ReduceLROnPlateau  # CosineAnnealingLR, CosineAnnealingWarmRestarts
+scheduler_config:
+  mode: min
+  patience: 3
+  factor: 0.1
+
+# Physics-informed neural network settings
+train_pinn: true
+mass_balance: true
+physics_loss_weight: 0.5

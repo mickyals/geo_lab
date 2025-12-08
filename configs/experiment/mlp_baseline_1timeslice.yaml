@@ -1,0 +1,33 @@
+# @package _global_
+
+# Experiment: MLP baseline with 1 time slice, no physics loss
+
+task_name: "mlp_baseline_1timeslice"
+tags: ["mlp_baseline", "1_timeslice", "no_physics"]
+
+defaults:
+  - override /model: troposphere_module_fcn
+
+data:
+  time_idx_range: [0, 1]
+  val_split: 0.1
+  test_split: 0.15
+  num_virtual: 0
+  include_virtual: false
+
+model:
+  model_name: "FCN"
+  train_pinn: false
+  physics_loss_weight: 0.0
+  model_params:
+    activation: "relu"
+    bias: true
+    init_type: "uniform"
+
+trainer:
+  max_epochs: 40
+
+logger:
+  wandb:
+    tags: ${tags}
+    group: "troposphere_mlp"

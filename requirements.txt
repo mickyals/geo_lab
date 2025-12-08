@@ -7,6 +7,7 @@ dask
 jupyter
 matplotlib
 cartopy
+colorcet
 
 
 # --------- pytorch --------- #
