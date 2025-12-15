@@ -166,8 +166,11 @@ seed: 42
 ## 🚀 Training
 
 ### Available Models
-- **SirenNet**: Physics-informed neural network for atmospheric modeling
-- *[Add other models as they become available]*
+- **SirenNet**: Tested
+- **SimpleDenseNet**: Tested
+- **GaussianNet**: Untested
+- **FinerNet**: Untested
+- **GaborWavetNet**: Untested
 
 ### Training Command
 ```bash
