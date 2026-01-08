@@ -8,6 +8,7 @@ jupyter
 matplotlib
 cartopy
 colorcet
+pydoe3
 
 
 # --------- pytorch --------- #
