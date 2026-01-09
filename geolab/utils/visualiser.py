@@ -9,6 +9,7 @@ from typing import Dict, List, Optional
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import colorcet as cc
+from meteorology import omega_to_w
 
 # Ground truth value ranges from ERA5 data
 GROUND_TRUTH_RANGES = {
@@ -441,6 +442,28 @@ def plot_meridional_slices(
         var_max = statistics[var_names[i]][1]
         preds[:, i] = (preds[:, i] + 1.0) * (var_max - var_min) / 2.0 + var_min
 
+    # Wind magnitude calculation (v (meridional) and w components)
+    if 'v' in var_names and 'w' in var_names:
+        v_idx = var_names.index('v')
+        w_idx = var_names.index('w')
+        
+        # Get temperature for omega_to_w conversion if needed
+        t_idx = var_names.index('t') if 't' in var_names else None
+        
+        # Convert w from Pa/s to m/s for each grid point
+        n_pressure = len(pressure_levels)
+        w_ms = torch.zeros_like(preds[:, w_idx])
+        
+        for lat_idx in range(n_lats):
+            for p_idx, pressure in enumerate(pressure_levels):
+                grid_idx = lat_idx * n_pressure + p_idx
+                omega = preds[grid_idx, w_idx]
+                temp = preds[grid_idx, t_idx] if t_idx is not None else 273.15  # Default temp if not available
+                w_ms[grid_idx] = omega_to_w(omega, pressure, temp)
+        
+        # Calculate wind magnitude
+        wind_mag = torch.sqrt(preds[:, v_idx]**2 + w_ms**2)
+
     # Create figures for each variable
     figures = {}
     n_pressure = len(pressure_levels)
@@ -452,6 +475,13 @@ def plot_meridional_slices(
             pred_field, var_name, longitude, pressure_levels, grid_resolution, True
         )
         figures[var_name] = fig
+
+    if 'v' in var_names and 'w' in var_names:
+        wind_mag_field = wind_mag.reshape(n_lats, n_pressure).cpu().numpy()
+        fig = _create_meridional_plot(
+            wind_mag_field, 'vw', longitude, pressure_levels, grid_resolution, True
+        )
+        figures['vw'] = fig
 
     return figures
 
