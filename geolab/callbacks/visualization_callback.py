@@ -9,6 +9,10 @@ from lightning.pytorch.loggers import WandbLogger
 
 from geolab.utils import visualiser
 
+PRESSURE_LEVELS_34 = [850, 840, 830, 820, 810, 800, 790, 780, 770, 760, 750, 
+                      725, 700, 675, 650, 625, 600, 575, 550, 525, 500, 
+                      475, 450, 425, 400, 375, 350, 325, 300, 275, 250, 
+                      230, 215, 200]
 
 class AtmosphericVisualizationCallback(Callback):
     """Callback for visualizing atmospheric model predictions during training."""
@@ -183,7 +187,24 @@ class AtmosphericVisualizationCallback(Callback):
                 for var_name, fig in figs.items():
                     if fig is not None:
                         logger.log_image(
-                            key=f"val/meridional_{lon}E_{var_name}",
+                            key=f"val/meridional_{lon}E_{var_name}_17lvl",
+                            images=[fig]
+                        )
+                        plt.close(fig)
+
+                # Plot with 34 pressure levels
+                figs_34 = visualiser.plot_meridional_slices(
+                    pl_module,
+                    val_batch,
+                    lon,
+                    self.var_names,
+                    PRESSURE_LEVELS_34,
+                    self.grid_resolution
+                )
+                for var_name, fig in figs_34.items():
+                    if fig is not None:
+                        logger.log_image(
+                            key=f"val/meridional_{lon}E_{var_name}_34lvl",
                             images=[fig]
                         )
                         plt.close(fig)
