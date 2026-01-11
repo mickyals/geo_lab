@@ -1,18 +1,28 @@
 _target_: geolab.data.datamodule.troposphere_datamodule.TroposphereDataModule
 data_dir: ${paths.data_dir}
-solution_vars: ["w", "u", "z", "v"]
-time_idx_range: [0,1]  # null is All time steps
-pressure_idx_range: null  # null is All pressure levels
-latitude_idx_range: null  # null is All latitudes
-longitude_idx_range: null  # null is All longitudes
-test_split: 0.0
-val_split: 0.3
-num_virtual: 100000000  # Number of virtual points
-include_virtual: false
-use_lhs: true  # Use Latin Hypercube Sampling
-pi_scale: false  # Scale coordinates
-batch_size: 1024
-num_workers: 4  # Number of workers for data loading
-persistent_workers: true
-pin_memory: true  # Use seed from experiment config
+# List of atmospheric variables to load
+solution_vars: ["t", "w", "u", "z", "v"]
+
+# Index ranges for subsetting the data (null means use all)
+time_idx_range: null       # [start, end] time steps
+pressure_idx_range: null   # [start, end] pressure levels
+latitude_idx_range: null   # [start, end] latitude points
+longitude_idx_range: null  # [start, end] longitude points
+
+# Data splitting
+val_split: 0.15            # Fraction of data for validation
+test_split: 0.15           # Fraction of data for testing
+split_type: "random"       # How to split the data: "random" or "sequential"
+
+# Normalization settings
+norm_type: "default"       # "default" (range [-1,1]), "standard" (z-score), or None
+
+# Data loading
+batch_size: 32
+num_workers: 4             # Number of workers for data loading
+persistent_workers: true   # Keep workers alive between epochs
+pin_memory: true           # Faster data transfer to GPU
+
+# Random seed for reproducibility
+seed: 42
 

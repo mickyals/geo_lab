@@ -9,6 +9,7 @@ from torchmetrics import MinMetric, MeanMetric
 from geolab.models.components import troposphere_pde_residual
 from geolab.models.model import FCN, SirenNet, GaussianNet, FinerNet, RealWireNet
 
+
 class TroposhpereLightningModule(LightningModule):
     """Example of a `LightningModule` for MNIST classification.
 
