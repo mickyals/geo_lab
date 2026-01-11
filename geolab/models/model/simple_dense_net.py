@@ -45,8 +45,9 @@ class FCNLayer(nn.Module):
 
 class FCN(nn.Module):
     def __init__(self, N_in_features, N_out_features, N_hidden_features, N_hidden_layers,
-                 activation='relu', bias=True, init_type='uniform', position_encoder_type=None,
-                 mapping_dim=None, scale=1.0):
+                 activation='relu', bias=True, init_type='uniform',
+                 position_encoder_type=None, mapping_dim=None, scale=1.0,
+                 encode_dims=None):
         super().__init__()
 
         self.position_encoder_type = position_encoder_type
@@ -55,21 +56,32 @@ class FCN(nn.Module):
         if position_encoder_type is not None:
             if mapping_dim is None:
                 raise ValueError("mapping_dim must be specified when using position encoder")
+
             self.position_encoder = FourierFeatures(
                 input_dimension=N_in_features,
                 mapping_dimension=mapping_dim,
                 scale=scale,
                 type=position_encoder_type,
+                encode_dims=encode_dims,  # Receives pre-computed indices
                 trainable=False
             )
+
             # Update input features for the network
-            network_input_features = mapping_dim
+            network_input_features = self.position_encoder.output_dimension
+
+            print(f"Position encoder created:")
+            print(f"  Type: {position_encoder_type}")
+            print(f"  Encoding dimensions: {encode_dims}")
+            print(f"  Passthrough dimensions: {self.position_encoder.passthrough_dims}")
+            print(f"  Output dimension: {network_input_features}")
         else:
             self.position_encoder = None
             network_input_features = N_in_features
 
-        self.net = self._build_network(network_input_features, N_out_features, N_hidden_features, N_hidden_layers,
-                                      activation, bias, init_type)
+        self.net = self._build_network(
+            network_input_features, N_out_features, N_hidden_features,
+            N_hidden_layers, activation, bias, init_type
+        )
 
 
     def _build_network(self, in_features, out_features, hidden_features, hidden_layers,

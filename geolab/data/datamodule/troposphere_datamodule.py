@@ -397,3 +397,18 @@ class TroposphereDataModule(LightningDataModule):
     def output_dim(self) -> int:
         """Output dimension (number of atmospheric variables)."""
         return len(self.solution_vars)
+
+    @property
+    def spatial_coords(self) -> List[str]:
+        """Return names of spatial coordinates."""
+        return ['latitude', 'longitude']
+
+    @property
+    def temporal_coords(self) -> List[str]:
+        """Return names of temporal coordinates."""
+        return ['valid_time']
+
+    @property
+    def vertical_coords(self) -> List[str]:
+        """Return names of vertical coordinates."""
+        return ['pressure_level']

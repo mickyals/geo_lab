@@ -1,4 +1,5 @@
 import numpy as np
+from typing import Dict
 import torch
 
 
@@ -36,25 +37,34 @@ def omega_to_w(omega, pressure_level, temperature):
 
     return w
 
-
-
-def compute_troposphere_gradients(inputs_tensor, model_outputs):
+def compute_troposphere_gradients(
+        inputs_tensor: torch.Tensor,
+        model_outputs: Dict[str, torch.Tensor],
+        coord_labels: Dict[str, int]  # NEW parameter
+        ) -> Dict[str, torch.Tensor]:
     """
     Compute the gradients of the troposphere model outputs with respect to the input coordinates.
 
     Parameters
     ----------
     inputs_tensor : torch.Tensor
-        Stacked input tensor with shape [batch, 4] where columns are:
-        [longitude, latitude, pressure_level, time]
+        Stacked input tensor with shape [batch, 4] where columns are in ANY order
     model_outputs : dict
         Dictionary containing the model outputs: u, v, w, and z.
+    coord_labels : dict
+        Mapping of coordinate names to column indices
 
     Returns
     -------
     grads : dict
         Dictionary containing the gradients of the model outputs with respect to the input coordinates.
     """
+    # Extract indices
+    lon_idx = coord_labels['longitude']
+    lat_idx = coord_labels['latitude']
+    p_idx = coord_labels['pressure_level']
+    t_idx = coord_labels['valid_time']
+
     # Get model outputs
     u_pred = model_outputs["u"]
     v_pred = model_outputs["v"]
@@ -64,9 +74,6 @@ def compute_troposphere_gradients(inputs_tensor, model_outputs):
     grads = {}
 
     # Compute gradients with respect to the full input tensor
-    # Then extract the relevant column for each coordinate
-
-
     grad_u = torch.autograd.grad(
         u_pred,
         inputs_tensor,
@@ -77,17 +84,15 @@ def compute_troposphere_gradients(inputs_tensor, model_outputs):
     )[0]
 
     if grad_u is not None:
-        grads["u_x"] = grad_u[:, 0]  # longitude (column 0)
-        grads["u_y"] = grad_u[:, 1]  # latitude (column 1)
-        grads["u_p"] = grad_u[:, 2]  # pressure (column 2)
-        grads["u_t"] = grad_u[:, 3]  # time (column 3)
+        grads["u_x"] = grad_u[:, lon_idx]  # Use label-based indexing
+        grads["u_y"] = grad_u[:, lat_idx]
+        grads["u_p"] = grad_u[:, p_idx]
+        grads["u_t"] = grad_u[:, t_idx]
     else:
-        # Fallback if gradient is None
         grads["u_x"] = torch.zeros_like(u_pred)
         grads["u_y"] = torch.zeros_like(u_pred)
         grads["u_p"] = torch.zeros_like(u_pred)
         grads["u_t"] = torch.zeros_like(u_pred)
-
 
     # Gradient of v with respect to all inputs
     grad_v = torch.autograd.grad(
@@ -99,18 +104,16 @@ def compute_troposphere_gradients(inputs_tensor, model_outputs):
         allow_unused=True
     )[0]
 
-
     if grad_v is not None:
-        grads["v_x"] = grad_v[:, 0]
-        grads["v_y"] = grad_v[:, 1]
-        grads["v_p"] = grad_v[:, 2]
-        grads["v_t"] = grad_v[:, 3]
+        grads["v_x"] = grad_v[:, lon_idx]
+        grads["v_y"] = grad_v[:, lat_idx]
+        grads["v_p"] = grad_v[:, p_idx]
+        grads["v_t"] = grad_v[:, t_idx]
     else:
         grads["v_x"] = torch.zeros_like(v_pred)
         grads["v_y"] = torch.zeros_like(v_pred)
         grads["v_p"] = torch.zeros_like(v_pred)
         grads["v_t"] = torch.zeros_like(v_pred)
-
 
     # Gradient of w with respect to pressure
     grad_w = torch.autograd.grad(
@@ -121,14 +124,11 @@ def compute_troposphere_gradients(inputs_tensor, model_outputs):
         retain_graph=True,
         allow_unused=True
     )[0]
-    
+
     if grad_w is not None:
-
-        grads["w_p"] = grad_w[:, 2]  # pressure (column 2)
-
+        grads["w_p"] = grad_w[:, p_idx]
     else:
         grads["w_p"] = torch.zeros_like(w_pred)
-
 
     # Gradient of z with respect to longitude and latitude
     grad_z = torch.autograd.grad(
@@ -139,66 +139,79 @@ def compute_troposphere_gradients(inputs_tensor, model_outputs):
         retain_graph=True,
         allow_unused=True
     )[0]
-    
-    if grad_z is not None:
 
-        grads["z_x"] = grad_z[:, 0]  # longitude (column 0)
-        grads["z_y"] = grad_z[:, 1]  # latitude (column 1)
+    if grad_z is not None:
+        grads["z_x"] = grad_z[:, lon_idx]
+        grads["z_y"] = grad_z[:, lat_idx]
     else:
         grads["z_x"] = torch.zeros_like(z_pred)
         grads["z_y"] = torch.zeros_like(z_pred)
 
     return grads
 
-def coriolis_force(latitude, earth_radius=6371222.9, central_latitude=0):
+
+def coriolis_force(latitude, earth_radius=6371222.9, central_latitude=0, return_full=False):
     """
     Calculate the Coriolis force given the latitude.
 
+    Optimized version: reduces tensor allocations and unnecessary normalizations.
+    Only computes f_0 and beta when needed for regional/beta-plane approximations.
+
     Parameters
     ----------
-    latitude : float or torch.Tensor
+    latitude : torch.Tensor
         Latitude in degrees.
     earth_radius : float, optional
         Radius of the Earth in meters. Defaults to 6371222.9.
     central_latitude : float, optional
-        Latitude of the central meridian in degrees. Defaults to 0.
+        Latitude of the central meridian in degrees for beta-plane approximation.
+        Defaults to 0.
+    return_full : bool, optional
+        If True, also compute f_0 and beta for beta-plane approximations.
+        If False (default), only return f for better performance.
 
     Returns
     -------
-    f_0 : float or torch.Tensor
-        Coriolis force at the central meridian.
-    f : float or torch.Tensor
-        Coriolis force at the given latitude.
-    beta : float or torch.Tensor
-        Beta parameter in the Coriolis force equation.
-        https://en.wikipedia.org/wiki/Beta_plane
+    dict
+        Dictionary with:
+        - "f": Coriolis parameter (always included)
+        - "f_0": Coriolis parameter at central latitude (if return_full=True)
+        - "beta": Beta parameter for beta-plane (if return_full=True)
+
+    Examples
+    --------
+    >>> # Global simulation (fast)
+    >>> coriolis = coriolis_force(lat_tensor)
+    >>> f = coriolis["f"]
+
+    >>> # Regional model with beta-plane
+    >>> coriolis = coriolis_force(lat_tensor, central_latitude=45.0, return_full=True)
+    >>> f, f_0, beta = coriolis["f"], coriolis["f_0"], coriolis["beta"]
     """
-    # Initialize the output dictionary
-    coriolis_force = {}
+    # Constants - create once per call, reuse
+    omega = 7.2921e-5  # Just use float, torch will handle dtype/device from latitude
 
-    # Angular velocity of the Earth in radians per second
+    # Convert latitude to radians
+    latitude_rad = torch.abs(latitude) * (torch.pi / 180.0)
 
-    omega = torch.tensor(7.2921e-5, dtype=latitude.dtype, device=latitude.device)
-    earth_radius = torch.tensor(6371222.9, dtype=latitude.dtype, device=latitude.device)
-
-    # Convert latitude to radians - coriolis force is only defined for latitudes between -90 and 90 but is symmetric about the equator
-    latitude_rad = torch.abs(latitude) * torch.pi / 180
-
-    # f normalized: 0 at equator, 1 at poles
-    # f = 2 * omega * sin(latitude_rad)
+    # f = 2 * omega * sin(latitude_rad) - return PHYSICAL value, not normalized
     f = 2 * omega * torch.sin(latitude_rad)
-    coriolis_force["f"] = f / (2 * omega)
 
-    # f_0 at central latitude (magnitude, 0–1)
-    # f_0 = 2 * omega * sin(central_latitude_rad)
-    central_latitude_rad = torch.abs(torch.tensor(central_latitude, dtype=latitude.dtype, device=latitude.device)) * (torch.pi / 180)
-    f_0 = 2 * omega * torch.sin(central_latitude_rad)
-    coriolis_force["f_0"] = f_0 / (2 * omega)
+    if not return_full:
+        return {"f": f}  # Fast path for global simulations
 
-    # beta normalized by its max at equator (cos(0) = 1)
-    # beta = (2 * omega / earth_radius) * cos(central_latitude_rad)
-    beta = (2 * omega / earth_radius) * torch.cos(central_latitude_rad)
-    beta_max = 2 * omega / earth_radius
-    coriolis_force["beta"] = beta / beta_max
+    # Beta-plane approximation parameters (for regional models)
+    central_lat_rad = abs(central_latitude) * (torch.pi / 180.0)
+    f_0 = 2 * omega * torch.sin(torch.tensor(central_lat_rad,
+                                             dtype=latitude.dtype,
+                                             device=latitude.device))
 
-    return coriolis_force
+    beta = (2 * omega / earth_radius) * torch.cos(torch.tensor(central_lat_rad,
+                                                               dtype=latitude.dtype,
+                                                               device=latitude.device))
+
+    return {
+        "f": f,  # Physical values, not normalized
+        "f_0": f_0,
+        "beta": beta
+    }

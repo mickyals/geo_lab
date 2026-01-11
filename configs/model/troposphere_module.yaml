@@ -2,15 +2,13 @@ _target_: geolab.models.modules.troposphere_module.TroposhpereLightningModule
 
 # Model architecture
 model_name: SirenNet
-N_in_features: 4  # longitude, latitude, pressure_level, time
-N_out_features: 4  # t, w, u, z, v
 N_hidden_features: 128
 N_hidden_layers: 5
-position_encoder_type: null # guassian, positional, basic, null if not to include
-mapping_dim: 128 # mapping dimension for positional encoding
-scale: 10.0 # scale for positional encoding
+position_encoder_type: null  # gaussian, positional, basic, null if not to include
+mapping_dim: 128  # mapping dimension for positional encoding
+scale: 10.0  # scale for positional encoding
 
-# Model-specific parameters for SirenNet change for specific model
+# Model-specific parameters for SirenNet
 model_params:
   first_omega: 30.0
   hidden_omega: 30.0
@@ -22,13 +20,17 @@ optimizer_config:
   weight_decay: 1e-5
 
 # Scheduler configuration
-scheduler_name: null # CosineAnnealingLR #ReduceLROnPlateau # CosineAnnealingLR CosineAnnealingWarmRestarts
+scheduler_name: null  # CosineAnnealingLR, ReduceLROnPlateau, CosineAnnealingWarmRestarts
 scheduler_config:
-  T_max: min
+  mode: min  # For ReduceLROnPlateau
   patience: 3
   factor: 0.1
 
 # Physics-informed neural network settings
 train_pinn: true
 mass_balance: true
-physics_loss_weight: 0.50
+physics_loss_weight: 0.5
+
+# Virtual sampling settings
+include_virtual: false
+num_virtual_per_batch: 1000
