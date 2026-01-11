@@ -117,7 +117,6 @@ class ERA5MultiData:
         return ds
 
 
-
     def _build_coordinate_arrays(self, ds):
         """ Extract coordinates as numpy arrays"""
 
@@ -208,6 +207,14 @@ class ERA5MultiData:
     @property
     def times(self) -> np.ndarray:
         return self.coordinates['valid_time']
+
+    @property
+    def input_dim(self) -> int:
+        return len(self.coord_labels)
+
+    @property
+    def output_dim(self):
+        return len(self.variable_labels)
 
 
 class ERA5MultiDataset(Dataset):
