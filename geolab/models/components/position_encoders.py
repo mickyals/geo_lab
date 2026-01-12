@@ -7,7 +7,7 @@ class FourierFeatures(nn.Module):
     """Fourier feature encoding with selective dimension encoding."""
 
     def __init__(self, input_dimension, mapping_dimension, scale, type,
-                 encode_dims: Optional[List[int]] = None, passthrough_dims=None, trainable=False):
+                 encode_dims: Optional[List[int]] = None, trainable=False):
         """
         Args:
             input_dimension: Total input dimensions
@@ -23,7 +23,7 @@ class FourierFeatures(nn.Module):
         self.input_dimension = input_dimension
         self.mapping_dimension = mapping_dimension
         self.encode_dims = encode_dims
-        self.passthrough_dims = passthrough_dims
+        self.passthrough_dims = [i for i in range(input_dimension) if i not in self.encode_dims]
 
         # Number of dimensions to encode
         self.n_encode = len(self.encode_dims)

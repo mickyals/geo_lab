@@ -127,11 +127,20 @@ class TroposphereLightningModule(LightningModule):
 
         # Convert coordinate names to indices
         encode_dims = None
-        passthrough_dims = None
         if self.hparams.position_encoder_type is not None:
-            encode_dims = self.datamodule.spatial_coords
-            passthrough_dims = self.datamodule.vertical_coords + self.datamodule.temporal_coords
+            # Get coordinate names to encode
+            if self.hparams.encode_coords is not None:
+                # User specified which coords to encode
+                encode_coord_names = self.hparams.encode_coords
+            else:
+                # Default: encode spatial coordinates
+                encode_coord_names = self.datamodule.spatial_coords
 
+            # Convert names to indices using coord_labels
+            encode_dims = [
+                self.datamodule.data.coord_labels[coord_name]
+                for coord_name in encode_coord_names
+            ]
 
         common_params = {
             "N_in_features": self.N_in_features,
@@ -141,8 +150,7 @@ class TroposphereLightningModule(LightningModule):
             "position_encoder_type": self.hparams.position_encoder_type,
             "mapping_dim": self.hparams.mapping_dim,
             "scale": self.hparams.scale,
-            "encode_dims": encode_dims ,  # Computed indices
-            "passthrough_dims": passthrough_dims,
+            "encode_dims": encode_dims,  # List of INTEGER indices or None
             **self.hparams.model_params
         }
 
