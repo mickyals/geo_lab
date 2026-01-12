@@ -43,8 +43,8 @@ def troposphere_pde_residual( inputs_tensor: torch.Tensor,
         'x': lon_scale, 'y': lat_scale, 'p': p_scale, 't': t_scale
     }
 
-    # FIX: Use label-based indexing instead of hardcoded [1]
-    latitude = inputs_tensor[:, lat_idx]  # <-- CHANGE THIS LINE
+    # Use label-based indexing instead of hardcoded [1]
+    latitude = inputs_tensor[:, lat_idx]  
 
     # Pass coord_labels to gradient computation
     grads = compute_troposphere_gradients(inputs_tensor, outputs, coord_labels)
