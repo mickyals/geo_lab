@@ -44,17 +44,20 @@ def troposphere_pde_residual( inputs_tensor: torch.Tensor,
     }
 
     # Use label-based indexing instead of hardcoded [1]
-    latitude = inputs_tensor[:, lat_idx]  
+    lat_min, lat_max = statistics["latitude"][0], statistics["latitude"][1]
+    latitude_norm = inputs_tensor[:, lat_idx]
+    latitude_physical = (latitude_norm + 1) / 2 * (lat_max - lat_min) + lat_min # assumes -1 to 1 normalisation, brittle to be updated
+
 
     # Pass coord_labels to gradient computation
     grads = compute_troposphere_gradients(inputs_tensor, outputs, coord_labels)
 
     # Get PHYSICAL (not normalized) Coriolis parameter
-    coriolis_params = coriolis_force(latitude)
+    coriolis_params = coriolis_force(latitude_physical)
     f = coriolis_params["f"] * 2 * omega
 
     # Convert longitude/latitude gradients to physical spatial gradients
-    latitude_rad = torch.abs(latitude) * torch.pi / 180.0
+    latitude_rad = torch.abs(latitude_physical) * torch.pi / 180.0
 
     dx_dlon = R_earth * torch.cos(latitude_rad) * (torch.pi / 180.0)
     dy_dlat = R_earth * (torch.pi / 180.0)

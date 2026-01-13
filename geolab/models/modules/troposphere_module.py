@@ -320,8 +320,6 @@ class TroposphereLightningModule(LightningModule):
         mse_w, mse_u, mse_z, mse_v = per_var_mse
 
         if self.train_pinn:
-            # Denormalize coords for physics computation
-            coords_denorm = self.datamodule.denormalize_coords(coords)
 
             # Build outputs dict using var_order
             outputs_dict = {var: preds[:, i]
@@ -332,7 +330,7 @@ class TroposphereLightningModule(LightningModule):
 
             # Compute physics residuals
             ns_longitude, ns_latitude, mass_cont = troposphere_pde_residual(
-                inputs_tensor=coords_denorm,
+                inputs_tensor=coords,
                 outputs=outputs_dict,
                 statistics=stats_physics,
                 coord_labels=self.datamodule.data.coord_labels,
@@ -349,7 +347,7 @@ class TroposphereLightningModule(LightningModule):
 
             # Regional physics using label-based indexing
             lat_idx = self.datamodule.data.coord_labels['latitude']
-            lat_deg = coords_denorm[:, lat_idx]
+            lat_deg = self.datamodule.denormalize_coords(coords)[:, lat_idx]
             abs_lat_deg = torch.abs(lat_deg)
 
             # Regional masks

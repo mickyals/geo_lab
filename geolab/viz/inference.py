@@ -58,24 +58,7 @@ class ModelInference:
     def predict_with_physics(self,
                              coords: torch.Tensor,
                              batch_size: int = 20000) -> Dict[str, torch.Tensor]:
-        """Get predictions AND physics residuals.
-
-        Args:
-            coords: (N, 4) tensor in PHYSICAL coordinates
-            batch_size: Batch size for inference
-
-        Returns:
-            Dict with keys:
-                'predictions': (N, num_vars) denormalized predictions
-                'ns_longitude': (N,) Navier-Stokes longitude residual
-                'ns_latitude': (N,) Navier-Stokes latitude residual
-                'mass_continuity': (N,) mass continuity residual
-
-        Example:
-            >>> results = inference.predict_with_physics(coords)
-            >>> preds = results['predictions']
-            >>> residuals = results['mass_continuity']
-        """
+        """Get predictions AND physics residuals."""
         if not self.model.train_pinn:
             raise RuntimeError(
                 "Model was not trained with PINN. Cannot compute physics residuals."
@@ -91,7 +74,7 @@ class ModelInference:
         for i in range(0, n, batch_size):
             batch_coords = coords[i:i + batch_size]
 
-            # Normalize
+            # Normalize and enable gradients
             batch_coords_norm = self.datamodule.normalize_coords(batch_coords)
             batch_coords_norm = batch_coords_norm.requires_grad_(True)
 
@@ -105,11 +88,11 @@ class ModelInference:
                     for j, var in enumerate(self.datamodule.data.var_order)
                 }
 
-                # Compute residuals (needs physical coords)
+                # Compute residuals - PASS NORMALIZED COORDS!
                 from geolab.models.components import troposphere_pde_residual
 
                 ns_lon, ns_lat, mass = troposphere_pde_residual(
-                    inputs_tensor=batch_coords,  # Physical coords
+                    inputs_tensor=batch_coords_norm,  # CHANGED: pass normalized coords with gradients
                     outputs=outputs,
                     statistics=self.model._convert_statistics_format(),
                     coord_labels=self.datamodule.data.coord_labels,

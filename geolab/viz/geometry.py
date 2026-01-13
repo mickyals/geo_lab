@@ -84,6 +84,12 @@ class GeometryGenerator:
 
         return point_coords
 
+    def _to_tensor(self, value):
+        """Convert value to torch tensor if needed."""
+        if isinstance(value, torch.Tensor):
+            return value
+        return torch.tensor(value, dtype=torch.float32)
+
     def line(self, axis: str, **fixed_coords) -> torch.Tensor:
         """Generate 1D line along one coordinate axis.
 
@@ -114,11 +120,13 @@ class GeometryGenerator:
                 f"Expected: {expected_fixed}, Got: {set(fixed_coords.keys())}"
             )
 
-        # Generate line along axis
+        fixed_coords = {k: self._to_tensor(v) for k, v in fixed_coords.items()}
+
+        # Generate line along axis - FIXED
         min_val, max_val = self.domain[axis]
         step = self.resolution[axis]
-        axis_values = torch.arange(min_val, max_val + step, step, dtype=torch.float32)
-        axis_values = axis_values[axis_values <= max_val]
+        n_points = int(round((max_val - min_val) / step)) + 1
+        axis_values = torch.linspace(min_val, max_val, n_points, dtype=torch.float32)
 
         # Build full coordinate tensor
         n_points = len(axis_values)
@@ -165,13 +173,19 @@ class GeometryGenerator:
                 f"Expected: {expected_fixed}, Got: {set(fixed_coords.keys())}"
             )
 
-        # Generate 1D arrays for each axis
+        fixed_coords = {k: self._to_tensor(v) for k, v in fixed_coords.items()}
+
+        # Generate 1D arrays for each axis - FIXED
         axis_arrays = []
         for axis in axes:
             min_val, max_val = self.domain[axis]
             step = self.resolution[axis]
-            arr = torch.arange(min_val, max_val + step, step, dtype=torch.float32)
-            arr = arr[arr <= max_val]
+
+            # Calculate number of points (inclusive of both endpoints)
+            n_points = int(round((max_val - min_val) / step)) + 1
+
+            # Use linspace for exact endpoint inclusion
+            arr = torch.linspace(min_val, max_val, n_points, dtype=torch.float32)
             axis_arrays.append(arr)
 
         # Create meshgrid
@@ -223,13 +237,15 @@ class GeometryGenerator:
                 f"Expected: {expected_fixed}, Got: {set(fixed_coords.keys())}"
             )
 
-        # Generate 1D arrays for each axis
+        fixed_coords = {k: self._to_tensor(v) for k, v in fixed_coords.items()}
+
+        # Generate 1D arrays for each axis - FIXED
         axis_arrays = []
         for axis in axes:
             min_val, max_val = self.domain[axis]
             step = self.resolution[axis]
-            arr = torch.arange(min_val, max_val + step, step, dtype=torch.float32)
-            arr = arr[arr <= max_val]
+            n_points = int(round((max_val - min_val) / step)) + 1
+            arr = torch.linspace(min_val, max_val, n_points, dtype=torch.float32)
             axis_arrays.append(arr)
 
         # Create meshgrid
