@@ -53,7 +53,7 @@ visualization:
       aggregation:
         type: zonal_mean
       vars: [u, v, w, v]
-      plot_type: 1d_profile
+      plot_type: 2d_profile
       data_source: model
       split: val
       
