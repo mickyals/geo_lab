@@ -4,7 +4,7 @@ data_dir: ${paths.data_dir}
 solution_vars: ["w", "u", "z", "v"]
 
 # Index ranges for subsetting the data (null means use all)
-time_idx_range: [0,2]       # [start, end] time steps
+time_idx_range: null       # [start, end] time steps
 pressure_idx_range: null   # [start, end] pressure levels
 latitude_idx_range: null   # [start, end] latitude points
 longitude_idx_range: null  # [start, end] longitude points

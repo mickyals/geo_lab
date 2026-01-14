@@ -375,56 +375,54 @@ def _apply_aggregation(data, coords, aggregation_spec, aggregator):
         return aggregator.temporal_evolution(data, coords, spatial_agg, return_indices)
 
 
-def _plot_variable(data, coords, var_name, plot_type, projection, plotter, geometry_spec):
-    """Plot a single variable."""
-    # Ensure data is on CPU and convert to numpy
-    if torch.is_tensor(data):
-        data_np = data.detach().cpu().numpy()
-    else:
-        data_np = np.asarray(data)
-        
-    if torch.is_tensor(coords):
-        coords_np = coords.detach().cpu().numpy()
-    else:
-        coords_np = coords
+def _plot_variable(data, coords, var_name, plotter, geometry_spec, plot_type='2d_field', projection='cartopy'):
+    """Robust plotting dispatcher that handles 1D, 2D, and irregular data."""
+    # Ensure CPU numpy format
+    data_np = data.detach().cpu().numpy() if torch.is_tensor(data) else data
+    coords_np = coords.detach().cpu().numpy() if torch.is_tensor(coords) else coords
 
     if plot_type == '2d_field':
-        # Reshape if needed
-        if len(data_np.shape) == 1:
-            # Try to reshape to 2D if we have coordinate information
-            if 'axes' in geometry_spec and len(geometry_spec['axes']) == 2:
-                # Get unique coordinates for each axis
-                axis1 = geometry_spec['axes'][0]
-                axis2 = geometry_spec['axes'][1]
-                unique1 = np.unique(coords_np[:, 0])
-                unique2 = np.unique(coords_np[:, 1])
-                
-                if len(unique1) * len(unique2) == len(data_np):
-                    # Reshape to 2D grid
-                    data_np = data_np.reshape(len(unique2), len(unique1))
-                else:
-                    # If we can't reshape to a grid, use scatter plot instead
-                    return plotter.plot_scatter(
-                        coords=coords_np,
-                        values=data_np,
-                        projection=projection,
-                        title=f"{var_name.upper()}"
-                    )
+        # 1. Identify which axes we are plotting
+        # If we aggregated (e.g., Zonal Mean), the geometry 'axes' might still list 3,
+        # but our coords only have 2 columns left. We rely on the remaining coords.
+        n_dims = coords_np.shape[1]
 
-        return plotter.plot_2d_field(
-            data=data_np,
+        if n_dims == 2:
+            # We have exactly 2 dimensions (e.g. Lat, Pressure). perfect for 2D field.
+            u1 = np.unique(coords_np[:, 0])
+            u2 = np.unique(coords_np[:, 1])
+
+            # Robust Check: Does the data form a perfect grid?
+            if len(u1) * len(u2) == len(data_np):
+                # Reshape to (Dim2, Dim1) for matplotlib
+                # We typically want the Y-axis to be the second coordinate (e.g. Pressure)
+                try:
+                    # Attempt reshape. logic assumes 'C' ordering from meshgrid generation
+                    grid_data = data_np.reshape(len(u1), len(u2)).T
+                except:
+                    grid_data = data_np.reshape(len(u2), len(u1))
+
+                return plotter.plot_2d_field(
+                    data=grid_data,
+                    coords=coords_np,
+                    var_name=var_name,
+                    projection=projection
+                )
+
+        # Fallback: If dimensions don't match or grid is irregular -> Scatter
+        print(f"Warning: Could not reshape {var_name} into grid. Plotting as scatter.")
+        return plotter.plot_scatter(
             coords=coords_np,
-            var_name=var_name,
-            projection=projection
+            values=data_np,
+            projection=projection,
+            title=f"{var_name} (Scatter)"
         )
 
     elif plot_type == '1d_profile':
-        # Extract appropriate coordinate for x-axis
-        coord_values = coords_np[:, 0]  # Simplification
-
+        # Handle 1D profiles (e.g. single column vertical profile)
         return plotter.plot_1d_profile(
             data=data_np,
-            coord_values=coord_values,
+            coord_values=coords_np[:, 0],
             var_name=var_name
         )
 

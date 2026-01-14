@@ -40,20 +40,21 @@ visualization:
       data_source: model
       split: val
       
-    # 3. Zonal mean profile
+    # 3. Zonal Mean Vertical Cross-Section (Latitude vs Pressure)
     - type: field
       geometry:
-        type: plane
-        axes: [longitude, latitude]
-        pressure_level: 500
+        type: volume
+        axes: [longitude, latitude, pressure_level]
         valid_time: 0.0
         resolution:
-          longitude: 0.25
+          longitude: 2.0   # Coarser resolution for averaging (saves memory)
           latitude: 0.25
+          pressure_level: 50.0
       aggregation:
-        type: zonal_mean
-      vars: [u, v, w, v]
-      plot_type: 1d_profile
+        type: zonal_mean   # Collapses Longitude, leaving [Latitude, Pressure]
+      vars: [u, v, w, z]
+      plot_type: 2d_field
+      projection: meridional # Tells plotter to use Lat/Pressure axes
       data_source: model
       split: val
       

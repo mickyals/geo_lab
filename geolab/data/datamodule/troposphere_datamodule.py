@@ -22,13 +22,12 @@ class TroposphereDataModule(LightningDataModule):
                  val_split: float = 0.15,
                  test_split: float = 0.70,
                  split_type: str = "random",
-                 norm_type: str = "default",
                  batch_size: int = 32,
                  num_workers: int = 4,
                  pin_memory: bool = True,
-                 persistent_workers: bool = False,
-                 seed: int = 42,
+                 persistent_workers: bool = False
                  ):
+
         super().__init__()
         self.save_hyperparameters()
 
@@ -38,6 +37,8 @@ class TroposphereDataModule(LightningDataModule):
         self.pressure_idx_range = pressure_idx_range
         self.latitude_idx_range = latitude_idx_range
         self.longitude_idx_range = longitude_idx_range
+
+        # Split and loader configs
         self.val_split = val_split
         self.test_split = test_split
         self.split_type = split_type
@@ -45,91 +46,72 @@ class TroposphereDataModule(LightningDataModule):
         self.num_workers = num_workers
         self.pin_memory = pin_memory
         self.persistent_workers = persistent_workers
-        self.seed = seed
-        self.norm_type = norm_type
 
-        # Set stats cache path here, not in prepare_data
-        self.stats_cache = self.data_dir.parent / "statistics.pkl"
-
-        # Will be populated in setup()
+        # State populated in setup()
+        self.data = None
         self.train_dataset = None
         self.val_dataset = None
         self.test_dataset = None
-        self.statistics = None
-        self.coordinate_ranges = None
+
+    def __post_init__(self):
+        if not (0 <= self.val_split + self.test_split <= 1.0):
+            raise ValueError("Sum of val_split and test_split must be between 0 and 1")
+
+    if not self.solution_vars:
+        raise ValueError("solution_vars cannot be empty")
 
     def prepare_data(self):
-        """Validate data availability."""
+        """Ensure the directory and metadata exist."""
         if not self.data_dir.exists():
-            raise ValueError(f"Data directory does not exist: {self.data_dir}")
-
-        if not self.stats_cache.exists():
-            print(f"Statistics cache not found at {self.stats_cache}.")
-            print("Will compute during setup().")
+            raise ValueError(f"Data directory not found: {self.data_dir}")
+        if not (self.data_dir / "metadata.json").exists():
+            raise ValueError(f"metadata.json missing in {self.data_dir}. Run conversion first.")
 
     def setup(self, stage: Optional[str] = None):
+        # 1. Initialize the new ERA5MultiData (loads metadata and stats automatically)
+        self.data = ERA5MultiData(
+            data_dir=self.data_dir,
+            variables=self.solution_vars,
+            time_idx_range=self.time_idx_range,
+            pressure_idx_range=self.pressure_idx_range,
+            latitude_idx_range=self.latitude_idx_range,
+            longitude_idx_range=self.longitude_idx_range,
+            preload=False  # Uses memory mapping by default
+        )
+
+        # 2. Split indices
+        train_indices, val_indices, test_indices = self._split_indices()
+
+        # 3. Create Datasets
         if stage == "fit" or stage is None:
-            # Load the full data
-            self.data = ERA5MultiData(
-                data_dir=self.data_dir,
-                variables=self.solution_vars,
-                time_idx_range=self.time_idx_range,
-                pressure_idx_range=self.pressure_idx_range,
-                latitude_idx_range=self.latitude_idx_range,
-                longitude_idx_range=self.longitude_idx_range
-            )
-
-            # Split indices
-            train_indices, val_indices, test_indices = self._split_indices()
-
-            # Compute or load statistics
-            if not self.stats_cache.exists():
-                self.statistics = self._compute_statistics(train_indices)
-            else:
-                self.statistics = self._load_statistics()
-
-            # Store coordinate ranges for reference
-            self.coordinate_ranges = {
-                'valid_time': (self.data.times.min(), self.data.times.max()),
-                'pressure_level': (self.data.pressure_levels.min(), self.data.pressure_levels.max()),
-                'latitude': (self.data.latitudes.min(), self.data.latitudes.max()),
-                'longitude': (self.data.longitudes.min(), self.data.longitudes.max()),
-            }
-
-            # Create datasets
             self.train_dataset = ERA5MultiDataset(
                 data=self.data,
                 indices=train_indices,
-                statistics=self.statistics,
-                variables=self.solution_vars,
+                variables=self.solution_vars
             )
-
             self.val_dataset = ERA5MultiDataset(
                 data=self.data,
                 indices=val_indices,
-                statistics=self.statistics,
-                variables=self.solution_vars,
+                variables=self.solution_vars
             )
 
+        if stage == "test" or stage is None:
             self.test_dataset = ERA5MultiDataset(
                 data=self.data,
                 indices=test_indices,
-                statistics=self.statistics,
-                variables=self.solution_vars,
-            )
+                variables=self.solution_vars)
 
     def _split_indices(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Split 4D indices (time, pressure, lat, lon) into train/val/test."""
-        np.random.seed(self.seed)
+
+        total_points = self.data.num_points
+        print(f"Total 4D grid points: {total_points:,}")
 
         n_times = self.data.num_times
         n_pressure = self.data.num_pressure_levels
         n_lats = self.data.num_latitudes
         n_lons = self.data.num_longitudes
 
-        total_points = n_times * n_pressure * n_lats * n_lons
-
-        print(f"Total 4D grid points: {total_points:,}")
         print(f"  Shape: (time={n_times}, pressure={n_pressure}, lat={n_lats}, lon={n_lons})")
 
         all_indices = np.arange(total_points)
@@ -162,52 +144,6 @@ class TroposphereDataModule(LightningDataModule):
 
         return train_indices, val_indices, test_indices
 
-    def _compute_statistics(self, train_indices):
-        """Compute statistics from training indices."""
-        print("Computing normalisation statistics from training data...")
-
-        statistics = {}
-
-        for var in self.solution_vars:
-            t_idx = train_indices[:, 0]
-            p_idx = train_indices[:, 1]
-            lat_idx = train_indices[:, 2]
-            lon_idx = train_indices[:, 3]
-
-            var_values = self.data.get_values_at_index(
-                var, t_idx, p_idx, lat_idx, lon_idx
-            )
-
-            minimum = var_values.min()
-            maximum = var_values.max()
-            mean = var_values.mean()
-            std = var_values.std()
-
-            statistics[var] = {
-                'min': torch.tensor(minimum, dtype=torch.float32),
-                'max': torch.tensor(maximum, dtype=torch.float32),
-                'mean': torch.tensor(mean, dtype=torch.float32),
-                'std': torch.tensor(std, dtype=torch.float32)
-            }
-            print(f"   {var}: min={minimum:.4f}, max={maximum:.4f}, mean={mean:.4f}, std={std:.4f}")
-
-        with open(self.stats_cache, 'wb') as f:
-            pickle.dump(statistics, f)
-
-        print(f"Cached statistics to {self.stats_cache}")
-
-        return statistics
-
-    def _load_statistics(self):
-        """Load precomputed statistics from cache."""
-        print(f"Loading statistics from {self.stats_cache}")
-
-        with open(self.stats_cache, 'rb') as f:
-            statistics = pickle.load(f)
-
-        print(f"Statistics loaded successfully!")
-        return statistics
-
     def _create_dataloader(self, dataset: Dataset, shuffle: bool = False):
         return DataLoader(
             dataset,
@@ -221,12 +157,8 @@ class TroposphereDataModule(LightningDataModule):
 
     def normalize(self, data: torch.Tensor, var: str) -> torch.Tensor:
         """Normalize a single variable tensor."""
-        if self.statistics is None:
-            raise RuntimeError("Statistics not computed. Call setup() first.")
-        if var not in self.statistics:
-            raise ValueError(f"Variable {var} not found in statistics.")
 
-        stats = self.statistics[var]
+        stats = self.data.var_statistics[var]
 
         if self.norm_type == "default":
             if stats["max"] == stats["min"]:
@@ -242,13 +174,8 @@ class TroposphereDataModule(LightningDataModule):
             return (data - stats["min"]) / (stats["max"] - stats["min"])
 
     def denormalize(self, data: torch.Tensor, var: str) -> torch.Tensor:
-        """Denormalize a single variable tensor."""
-        if self.statistics is None:
-            raise RuntimeError("Statistics not computed. Call setup() first.")
-        if var not in self.statistics:
-            raise ValueError(f"Variable {var} not found in statistics.")
 
-        stats = self.statistics[var]
+        stats = self.data.var_statistics[var]
 
         if self.norm_type == "default":
             if stats["max"] == stats["min"]:
@@ -275,16 +202,14 @@ class TroposphereDataModule(LightningDataModule):
         Returns:
             Normalized coordinates in range [-1, 1] with pressure in Pa
         """
-        if self.coordinate_ranges is None:
-            raise RuntimeError("Coordinate ranges not set. Call setup() first.")
 
         # Clone to avoid modifying input
         coords_si = coords.clone()
         normalized = torch.zeros_like(coords)
-        coord_names = ['valid_time', 'pressure_level', 'latitude', 'longitude']
+        coord_names = self.data.coord_order
 
         for i, name in enumerate(coord_names):
-            min_val, max_val = self.coordinate_ranges[name]
+            min_val, max_val = self.data.coord_statistics[name]['minimum'], self.data.coord_statistics[name]['maximum']
 
             # Convert pressure from hPa to Pa before normalization
             if name == 'pressure_level':
@@ -293,7 +218,8 @@ class TroposphereDataModule(LightningDataModule):
                 max_val = max_val * 100.0
 
             # Normalize to [-1, 1]
-            normalized[..., i] = 2 * (coords_si[..., i] - min_val) / (max_val - min_val + 1e-8) - 1
+            normalized[..., i] = 2 * (coords_si[..., i] - min_val) / (
+                        max_val - min_val) - 1 if max_val > min_val else 1.0
 
         return normalized
 
@@ -309,14 +235,12 @@ class TroposphereDataModule(LightningDataModule):
         Returns:
             Denormalized coordinates with pressure in hPa
         """
-        if self.coordinate_ranges is None:
-            raise RuntimeError("Coordinate ranges not set. Call setup() first.")
 
         denormalized = torch.zeros_like(coords)
-        coord_names = ['valid_time', 'pressure_level', 'latitude', 'longitude']
+        coord_names = self.data.coord_order
 
         for i, name in enumerate(coord_names):
-            min_val, max_val = self.coordinate_ranges[name]
+            min_val, max_val = self.data.coord_statistics[name]['minimum'], self.data.coord_statistics[name]['maximum']
 
             # Adjust ranges for pressure (stored in hPa, but normalized as Pa)
             if name == 'pressure_level':
@@ -324,7 +248,8 @@ class TroposphereDataModule(LightningDataModule):
                 max_val = max_val * 100.0
 
             # Denormalize from [-1, 1]
-            denormalized[..., i] = (coords[..., i] + 1) / 2 * (max_val - min_val) + min_val
+            denormalized[..., i] = (coords[..., i] + 1) / 2 * (
+                        max_val - min_val) + min_val if max_val > min_val else 1.0
 
             # Convert pressure back from Pa to hPa for display
             if name == 'pressure_level':
@@ -386,7 +311,7 @@ class TroposphereDataModule(LightningDataModule):
 
     def get_coordinate_labels(self) -> List[str]:
         """Get list of coordinate names."""
-        return ['valid_time', 'pressure_level', 'latitude', 'longitude']
+        return list(self.data.coord_labels.keys())
 
     def train_dataloader(self) -> DataLoader:
         return self._create_dataloader(self.train_dataset, shuffle=True)

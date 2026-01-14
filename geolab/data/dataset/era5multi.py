@@ -1,32 +1,96 @@
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 import numpy as np
+import json
 import torch
 from torch.utils.data import Dataset
 import xarray as xr
 
 
-class ERA5MultiData:
-    """A class for handling and processing multi-variable ERA5 climate reanalysis data.
-
-    This class provides functionality to load, slice, and access ERA5 climate data stored in NetCDF format.
-    It supports both lazy loading and preloading of data into memory for faster access.
-
-    Attributes:
-        data_dir (Path): Directory containing the ERA5 NetCDF files.
-        variables (List[str]): List of variable names to load from the dataset.
-        time_idx_range (Optional[Tuple[int, int]]): Start and end indices for time dimension.
-        pressure_idx_range (Optional[Tuple[int, int]]): Start and end indices for pressure level dimension.
-        latitude_idx_range (Optional[Tuple[int, int]]): Start and end indices for latitude dimension.
-        longitude_idx_range (Optional[Tuple[int, int]]): Start and end indices for longitude dimension.
-        preload (bool): If True, loads all data into memory. If False, uses lazy loading.
-        ds (xr.Dataset): The xarray Dataset containing the loaded data.
-        data_arrays (Dict[str, np.ndarray]): Dictionary mapping variable names to their data arrays.
-        coordinates (Dict[str, np.ndarray]): Dictionary mapping coordinate names to their values.
-        coord_labels (Dict[str, int]): Mapping of coordinate names to their dimension indices.
-        variable_labels (Dict[str, int]): Mapping of variable names to their indices.
-        coord_sizes (np.ndarray): Array of coordinate dimension sizes.
+def convert_netcdf_to_npy(
+        source_dir: str,
+        dest_dir: str,
+        variables: list[str]
+):
     """
+    convert_netcdf_to_npy(data_dir, "./era5_npy", ["u", "v", "t", "z", "w"])
+    """
+    source_path = Path(source_dir)
+    dest_path = Path(dest_dir)
+    dest_path.mkdir(parents=True, exist_ok=True)
+
+    print(f"Opening NetCDFs from {source_path}...")
+    if source_path.is_file():
+        ds = xr.open_dataset(source_path)
+    else:
+        ds = xr.open_mfdataset(str(source_path / "*.nc"), combine='by_coords')
+
+    # Helper function to convert numpy scalars to python natives for JSON
+    def get_stats(arr):
+        return {
+            "minimum": float(arr.min()),
+            "maximum": float(arr.max()),
+            "mean": float(arr.mean()),
+            "std": float(arr.std())
+        }
+
+    # 1. Process Coordinates
+    print("Processing coordinates...")
+    coords = {}
+    coord_stats = {}
+
+    # Time
+    coords['valid_time'] = ds['valid_time'].values.astype('datetime64[s]').astype(np.float32)
+    coord_stats['valid_time'] = get_stats(coords['valid_time'])
+
+    # Pressure
+    coords['pressure_level'] = ds['pressure_level'].values.astype(np.float32)
+    coord_stats['pressure_level'] = get_stats(coords['pressure_level'])
+
+    # Latitude
+    coords['latitude'] = ds['latitude'].values.astype(np.float32)
+    coord_stats['latitude'] = get_stats(coords['latitude'])
+
+    # Longitude
+    lon_data = ds['longitude'].values
+    lon_data = ((lon_data + 180) % 360) - 180
+    coords['longitude'] = lon_data.astype(np.float32)
+    coord_stats['longitude'] = get_stats(coords['longitude'])
+
+    # Save Coordinates
+    np.savez(dest_path / "coords.npz", **coords)
+
+    # 2. Process Variables
+    shape_info = {}
+    var_stats = {}
+    for var in variables:
+        print(f"Processing variable: {var}...")
+        if var not in ds:
+            continue
+
+        data = ds[var].values.astype(np.float32)
+        var_stats[var] = get_stats(data)
+
+        np.save(dest_path / f"{var}.npy", data)
+        # Convert shape tuple to list of ints for JSON safety
+        shape_info[var] = [int(s) for s in data.shape]
+
+    # 3. Save Metadata
+    metadata = {
+        "coord_labels": {k: i for i, k in enumerate(["valid_time", "pressure_level", "latitude", "longitude"])},
+        "variable_labels": {k: i for i, k in enumerate(variables)},
+        "coord_stats": coord_stats,
+        "var_stats": var_stats,
+        "shapes": shape_info
+    }
+
+    with open(dest_path / "metadata.json", "w") as f:
+        json.dump(metadata, f, indent=2)
+
+    print(f"Conversion complete. Data saved to {dest_path}")
+
+
+class ERA5MultiData:
 
     def __init__(self,
                  data_dir: Union[str, Path],
@@ -35,260 +99,51 @@ class ERA5MultiData:
                  pressure_idx_range: Optional[Tuple[int, int]] = None,
                  latitude_idx_range: Optional[Tuple[int, int]] = None,
                  longitude_idx_range: Optional[Tuple[int, int]] = None,
-                 preload: bool = True):
-        """Initialize the ERA5MultiData instance and load the specified data.
-
-        Args:
-            data_dir: Path to the directory containing ERA5 NetCDF files or a single NetCDF file.
-            variables: List of variable names to load from the dataset.
-            time_idx_range: Optional (start, end) indices for time dimension.
-            pressure_idx_range: Optional (start, end) indices for pressure level dimension.
-            latitude_idx_range: Optional (start, end) indices for latitude dimension.
-            longitude_idx_range: Optional (start, end) indices for longitude dimension.
-            preload: If True, loads all data into memory. If False, uses lazy loading.
-        """
+                 preload: bool = True
+                 ):
         self.data_dir = Path(data_dir)
         self.variables = variables
-        self.time_idx_range = time_idx_range
-        self.pressure_idx_range = pressure_idx_range
-        self.latitude_idx_range = latitude_idx_range
-        self.longitude_idx_range = longitude_idx_range
         self.preload = preload
 
-        # Initialize data structures that will be populated in load()
-        self.ds = None  # Will hold the xarray Dataset
-        self.data_arrays = {}  # Maps variable names to their numpy arrays
-        self.coordinates = {}  # Maps coordinate names to their numpy arrays
-        self.coord_labels = {}  # Maps coordinate names to their dimension indices
-        self.variable_labels = {}  # Maps variable names to their indices
-        self.coord_sizes = None  # Will hold sizes of each coordinate dimension
+        # Load Metadata and Stats
+        with open(self.data_dir / "metadata.json", "r") as f:
+            metadata = json.load(f)
 
-        # Load the data
-        self.load()
+        self.coord_labels = metadata['coord_labels']
+        self.variable_labels = metadata['variable_labels']
+        self.coord_stats = metadata['coord_stats']
+        self.var_stats = metadata['var_stats']
 
-    def load(self) -> None:
-        """Load and prepare the ERA5 dataset based on initialization parameters."""
-        import dask.array as da
-        from dask.distributed import Client
+        time_slice = slice(*time_idx_range) if time_idx_range else slice(None)
+        pressure_slice = slice(*pressure_idx_range) if pressure_idx_range else slice(None)
+        latitude_slice = slice(*latitude_idx_range) if latitude_idx_range else slice(None)
+        longitude_slice = slice(*longitude_idx_range) if longitude_idx_range else slice(None)
 
-        print(f"Loading ERA5 data from {self.data_dir}")
-
-        # Initialize Dask client for parallel processing
-        client = Client(processes=True)
-
-        try:
-            # Open dataset with Dask for lazy loading
-            if self.data_dir.is_file():
-                ds = xr.open_dataset(self.data_dir, chunks={'time': 1})
-            else:
-                ds = xr.open_mfdataset(
-                    str(self.data_dir / "*.nc"),
-                    combine='by_coords',
-                    parallel=True,
-                    chunks={'time': 1}  # Chunk by time for better parallelization
-                )
-
-            # Select variables and apply slicing
-            ds = ds[list(self.variables)]
-            ds = self._apply_slicing(ds)
-
-            # Build coordinate and variable mappings
-            self._build_mappings(ds)
-            self._build_coordinate_arrays(ds)
-
-            if self.preload:
-                print("Preloading data into memory...")
-                self._build_target_arrays(ds)
-                ds.close()
-            else:
-                self.ds = ds
-
-            print(f"Successfully loaded {len(self.variables)} variables")
-            for var in self.variables:
-                shape = self.data_arrays[var].shape if self.preload else self.ds[var].shape
-                print(f"   {var}: {shape}")
-
-        finally:
-            client.close()
-
-    def _build_mappings(self, ds: xr.Dataset) -> None:
-        """Build coordinate and variable mappings."""
-        self.coord_labels = {coord: idx for idx, coord in enumerate(ds.sizes.keys())}
-        self.variable_labels = {var: idx for idx, var in enumerate(ds.keys())}
-        self.coord_sizes = np.array(list(ds.sizes.values()))
-
-    @staticmethod
-    def _make_slice(idx_range: Optional[Union[Tuple[int, int], List[int]]]) -> slice:
-        """Create a slice object from a range tuple or list.
-
-        Args:
-            idx_range: Optional tuple or list of [start, end] indices.
-                      If None, empty, or falsy, returns a slice(None) which selects all elements.
-
-        Returns:
-            slice: A slice object representing the specified range.
-        """
-        if not idx_range:  # Handles None, empty list, empty tuple
-            return slice(None)
-        return slice(idx_range[0], idx_range[1])
-
-    def _apply_slicing(self, ds: xr.Dataset) -> xr.Dataset:
-        """Apply index-based slicing to the dataset based on initialization parameters.
-
-        This method creates a slice dictionary for each dimension that has a specified
-        index range and applies it to the dataset using xarray's isel method.
-
-        Args:
-            ds: The xarray Dataset to slice.
-
-        Returns:
-            xr.Dataset: The sliced dataset.
-        """
-        slice_dict = {}
-
-        # Create slice objects for each dimension if a range was specified
-        if self.time_idx_range is not None:
-            slice_dict['valid_time'] = self._make_slice(self.time_idx_range)
-
-        if self.pressure_idx_range is not None:
-            slice_dict['pressure_level'] = self._make_slice(self.pressure_idx_range)
-
-        if self.latitude_idx_range is not None:
-            slice_dict['latitude'] = self._make_slice(self.latitude_idx_range)
-
-        if self.longitude_idx_range is not None:
-            slice_dict['longitude'] = self._make_slice(self.longitude_idx_range)
-
-        # Apply the slicing if any dimensions were specified
-        if slice_dict:
-            print(f"Applying slicing: {slice_dict}")
-            ds = ds.isel(slice_dict)  # Apply the slicing using xarray's isel
-        else:
-            print("No slicing applied - using all indices")
-
-        return ds
-
-    def _build_coordinate_arrays(self, ds: xr.Dataset) -> None:
-        """Extract coordinate values from the dataset and store them as numpy arrays.
-
-        This method processes the time, pressure level, latitude, and longitude coordinates,
-        performs any necessary transformations, and stores them in the coordinates dictionary.
-
-        Args:
-            ds: The xarray Dataset containing the coordinate data.
-        """
-        # Process time coordinate - convert to seconds since epoch
-        time_data = ds['valid_time'].values  # numpy array of datetime64
-        self.coordinates['valid_time'] = time_data.astype('datetime64[s]').astype(np.float32)
-
-        # Process pressure levels (hPa or Pa)
-        pressure_data = ds['pressure_level'].values
-        self.coordinates['pressure_level'] = pressure_data.astype(np.float32)
-
-        # Process latitude (degrees north, -90 to 90)
-        latitude_data = ds['latitude'].values
-        self.coordinates['latitude'] = latitude_data.astype(np.float32)
-
-        # Process longitude (degrees east, -180 to 180)
-        # Convert from 0-360 to -180 to 180 if necessary
-        longitude_data = ds['longitude'].values
-        longitude_data = ((longitude_data + 180) % 360) - 180  # Convert to -180 to 180 range
-        self.coordinates['longitude'] = longitude_data.astype(np.float32)
-
-        # Print summary of coordinate ranges
-        print("Coordinate ranges:")
-        for name, data in self.coordinates.items():
-            print(f"  {name}: shape={data.shape}, range=[{data.min():.2f}, {data.max():.2f}]")
-
-    def _build_target_arrays(self, ds: xr.Dataset) -> None:
-        """Load variable data from the dataset into memory as numpy arrays.
-
-        This method is called when preload=True to load the actual data values
-        for each variable into memory for faster access during training/inference.
-
-        Args:
-            ds: The xarray Dataset containing the variable data.
-        """
+        with np.load(self.data_dir / "coords.npz") as loader:
+            self.coordinates = {
+                'valid_time': loader['valid_time'][time_slice],
+                'pressure_level': loader['pressure_level'][pressure_slice],
+                'latitude': loader['latitude'][latitude_slice],
+                'longitude': loader['longitude'][longitude_slice]
+            }
+        # Initialize Data Arrays (Memory Mapped or Preloaded)
+        self.data_arrays = {}
         for var in self.variables:
-            print(f"  Loading {var}...")
-            # Extract data and ensure it's in float32 format to save memory
-            data = ds[var].values.astype(np.float32)
-            self.data_arrays[var] = data
-            # Print memory usage information
-            print(f"    Memory usage: {data.nbytes / 1e9:.2f} GB")
+            arr = np.load(self.data_dir / f"{var}.npy", mmap_mode='r')
+            # Apply slicing to the memmap
+            sliced_arr = arr[time_slice, pressure_slice, latitude_slice, longitude_slice]
+            self.data_arrays[var] = sliced_arr.copy() if preload else sliced_arr
 
-    def get_variable(self, var_name: str, indices: Optional[List[int]] = None) -> np.ndarray:
-        """Retrieve data for a specific variable, optionally at specified indices.
-
-        Args:
-            var_name: Name of the variable to retrieve.
-            indices: Optional list of indices to select specific elements from the variable.
-                    If None, returns the entire array.
-
-        Returns:
-            np.ndarray: The requested variable data as a numpy array.
-
-        Raises:
-            ValueError: If the specified variable is not found in the dataset.
-        """
-        if var_name not in self.data_arrays:
-            raise ValueError(f"Variable {var_name} not found in dataset.")
-
-        if indices is not None:
-            return self.data_arrays[var_name][indices]
-        return self.data_arrays[var_name]
-
-    def get_coords_at_index(self,
-                            time_idx: Union[int, np.ndarray],
-                            pressure_idx: Union[int, np.ndarray],
-                            latitude_idx: Union[int, np.ndarray],
-                            longitude_idx: Union[int, np.ndarray]) -> np.ndarray:
-        """Get the coordinate values at the specified dimensional indices.
-
-        Args:
-            time_idx: Index or indices for the time dimension.
-            pressure_idx: Index or indices for the pressure level dimension.
-            latitude_idx: Index or indices for the latitude dimension.
-            longitude_idx: Index or indices for the longitude dimension.
-
-        Returns:
-            np.ndarray: Stacked array of coordinate values with shape (..., 4) where the last dimension
-                      contains [time, pressure, latitude, longitude] values.
-        """
+    def get_coords_at_index(self, t_idx, p_idx, lat_idx, lon_idx) -> np.ndarray:
         return np.stack([
-            self.coordinates['valid_time'][time_idx],
-            self.coordinates['pressure_level'][pressure_idx],
-            self.coordinates['latitude'][latitude_idx],
-            self.coordinates['longitude'][longitude_idx]
+            self.coordinates['valid_time'][t_idx],
+            self.coordinates['pressure_level'][p_idx],
+            self.coordinates['latitude'][lat_idx],
+            self.coordinates['longitude'][lon_idx]
         ], axis=-1)
 
-    def get_values_at_index(self,
-                            var_name: str,
-                            time_idx: Union[int, np.ndarray],
-                            pressure_idx: Union[int, np.ndarray],
-                            latitude_idx: Union[int, np.ndarray],
-                            longitude_idx: Union[int, np.ndarray]) -> np.ndarray:
-        """Retrieve variable values at the specified dimensional indices.
-
-        Args:
-            var_name: Name of the variable to retrieve values for.
-            time_idx: Index or indices for the time dimension.
-            pressure_idx: Index or indices for the pressure level dimension.
-            latitude_idx: Index or indices for the latitude dimension.
-            longitude_idx: Index or indices for the longitude dimension.
-
-        Returns:
-            np.ndarray: The requested values as a numpy array. The shape will match the
-                      broadcasted shape of the input indices.
-
-        Note:
-            If preload=False, this will trigger disk reads for each access.
-            For better performance with repeated access, use preload=True.
-        """
-        # Get data from memory if preloaded, otherwise read from disk
-        data = self.data_arrays[var_name] if self.preload else self.ds[var_name].values
-        # Use numpy's advanced indexing to get the requested values
-        return data[time_idx, pressure_idx, latitude_idx, longitude_idx]
+    def get_values_at_index(self, var_name, t_idx, p_idx, lat_idx, lon_idx) -> np.ndarray:
+        return self.data_arrays[var_name][t_idx, p_idx, lat_idx, lon_idx]
 
     @property
     def num_times(self) -> int:
@@ -312,7 +167,7 @@ class ERA5MultiData:
 
     @property
     def latitudes(self) -> np.ndarray:
-        """np.ndarray: Array of latitude values in degrees north."""
+        """np.ndarray: Array of latitude values in degrees."""
         return self.coordinates['latitude']
 
     @property
@@ -342,84 +197,62 @@ class ERA5MultiData:
 
     @property
     def get_var_labels(self):
-        return [self.variable_labels.keys()]
+        return list(self.variable_labels.keys())
 
     @property
     def var_order(self) -> List[str]:
         """List[str]: Variable names sorted by their index."""
-        return sorted(self.variable_labels.keys(),
-                      key=lambda k: self.variable_labels[k])
+        return list(self.variable_labels.keys())
+
+    @property
+    def time_idx(self) -> int:
+        return self.coord_labels['valid_time']
+
+    @property
+    def pressure_idx(self) -> int:
+        return self.coord_labels['pressure_level']
+
+    @property
+    def latitude_idx(self) -> int:
+        return self.coord_labels['latitude']
+
+    @property
+    def longitude_idx(self) -> int:
+        return self.coord_labels['longitude']
 
     @property
     def coord_order(self) -> List[str]:
         """List[str]: Coordinate names sorted by their index."""
-        return sorted(self.coord_labels.keys(),
-                      key=lambda k: self.coord_labels[k])
+        return list(self.coord_labels.keys())
+
+    @property
+    def num_points(self):
+        return len(self.coordinates['valid_time']) * len(self.coordinates['pressure_level']) * len(
+            self.coordinates['latitude']) * len(self.coordinates['longitude'])
+
+    @property
+    def coord_statistics(self):
+        return self.coord_stats
+
+    @property
+    def variable_statistics(self):
+        return self.var_stats
 
 
 class ERA5MultiDataset(Dataset):
-    """PyTorch Dataset for ERA5 data.
-
-    Returns raw coordinate-value pairs. Normalization is handled by the datamodule.
-    """
-
-    def __init__(
-            self,
-            data: ERA5MultiData,
-            indices: np.ndarray,
-            statistics: Dict,
-            variables: List[str],
-    ):
-        """Initialize dataset.
-
-        Args:
-            data: ERA5MultiData instance
-            indices: Array of shape (N, 4) with [time_idx, pressure_idx, lat_idx, lon_idx]
-            statistics: Dict of statistics (not used here, kept for compatibility)
-            variables: List of variable names
-        """
+    def __init__(self, data: ERA5MultiData, indices: np.ndarray, variables: List[str], **kwargs):
         self.data = data
         self.indices = indices
         self.variables = variables
 
-    def __len__(self) -> int:
-        """Number of samples in dataset."""
-        return len(self.indices)
+    def __len__(self): return len(self.indices)
 
-    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
-        """Get a single sample.
-
-        Args:
-            idx: Index into self.indices
-
-        Returns:
-            Dict with keys:
-                - 'coords': Tensor of shape (4,) with [time, pressure, lat, lon] (raw values)
-                - 'values': Tensor of shape (num_vars,) with atmospheric variable values (raw)
-        """
-        # Get 4D index
-        time_idx, pressure_idx, lat_idx, lon_idx = self.indices[idx]
-
-        # Get raw coordinate values
-        coords = self.data.get_coords_at_index(
-            time_idx, pressure_idx, lat_idx, lon_idx
-        )  # Shape: (4,)
-
-        # Get raw variable values
-        values = []
-        for var in self.variables:
-            val = self.data.get_values_at_index(
-                var, time_idx, pressure_idx, lat_idx, lon_idx
-            )
-            values.append(val)
-
-        values = np.array(values, dtype=np.float32)  # Shape: (num_vars,)
-
-        # Convert to tensors
-        coords_tensor = torch.from_numpy(coords).float()
-        values_tensor = torch.from_numpy(values).float()
+    def __getitem__(self, idx):
+        t, p, lat, lon = self.indices[idx]
+        coords = self.data.get_coords_at_index(t, p, lat, lon)
+        values = np.array([self.data.get_values_at_index(v, t, p, lat, lon) for v in self.variables])
 
         return {
-            'coords': coords_tensor,
-            'values': values_tensor,
+            'coords': torch.from_numpy(coords).float(),
+            'values': torch.from_numpy(values).float()
         }
