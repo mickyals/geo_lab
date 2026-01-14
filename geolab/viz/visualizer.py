@@ -375,7 +375,73 @@ def _apply_aggregation(data, coords, aggregation_spec, aggregator):
         return aggregator.temporal_evolution(data, coords, spatial_agg, return_indices)
 
 
-def _plot_variable(data, coords, var_name, plot_type, projection, plotter, geometry_spec):
+
+def _plot_variable(
+        data: torch.Tensor,
+        coords: torch.Tensor,
+        var_name: str,
+        plotter: Plotter,
+        geometry_spec: Dict,
+        plot_type: str = '2d_field',
+        projection: str = 'cartopy'
+        ) -> Figure:
+    """Helper to route data to the correct Plotter method."""
+    # Convert to numpy for plotting
+    data_np = data.detach().cpu().numpy()
+    coords_np = coords.detach().cpu().numpy()
+
+    if plot_type == '2d_field':
+        # BUG FIX: Dynamically determine the 2D grid shape based on provided axes
+        if 'axes' in geometry_spec and len(geometry_spec['axes']) == 2:
+            axis1_name, axis2_name = geometry_spec['axes']
+            
+            # Find unique coordinate values to determine grid dimensions
+            # We use the original coordinate indices to ensure we slice correctly
+            unique1 = np.unique(coords_np[:, 0])
+            unique2 = np.unique(coords_np[:, 1])
+            
+            if len(unique1) * len(unique2) == len(data_np):
+                # Reshape to (Len_Axis2, Len_Axis1)
+                # Matplotlib's contourf/imshow expects (rows, cols) -> (Y, X)
+                data_np = data_np.reshape(len(unique2), len(unique1))
+            else:
+                # Fallback to scatter if the coordinates don't form a perfect grid
+                return plotter.plot_scatter(
+                    coords=coords_np,
+                    values=data_np,
+                    projection=projection,
+                    title=f"{var_name.upper()} (Scatter)"
+                )
+
+        # Route to specific projection handlers in plotting.py
+        return plotter.plot_2d_field(
+            data=data_np,
+            coords=coords_np,
+            var_name=var_name,
+            projection=projection
+        )
+
+    elif plot_type == '1d_profile':
+        # BUG FIX: If an aggregation (like zonal mean) was applied, 
+        # we need to use the remaining coordinate for the X-axis.
+        # coords_np[:, 0] will be the first remaining axis after reduction.
+        return plotter.plot_1d_profile(
+            data=data_np,
+            coord_values=coords_np[:, 0], 
+            var_name=var_name
+        )
+
+    elif plot_type == 'scatter':
+        return plotter.plot_scatter(
+            coords=coords_np,
+            values=data_np,
+            projection=projection
+        )
+
+    else:
+        raise ValueError(f"Unknown plot_type: {plot_type}")
+
+def _plot_variable_test(data, coords, var_name, plot_type, projection, plotter, geometry_spec):
     """Plot a single variable."""
     # Ensure data is on CPU and convert to numpy
     if torch.is_tensor(data):
