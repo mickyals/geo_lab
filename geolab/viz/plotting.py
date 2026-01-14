@@ -31,146 +31,236 @@ class Plotter:
             'default': 'viridis'
         }
 
+    # def plot_2d_field(self,
+    #                   data: np.ndarray,
+    #                   coords: np.ndarray,
+    #                   var_name: str,
+    #                   projection: str = 'cartopy',
+    #                   **kwargs) -> Figure:
+    #     """Plot 2D field (horizontal slice or cross-section).
+
+    #     Args:
+    #         data: 2D array to plot
+    #         coords: Coordinate array (used for extent/axes)
+    #         var_name: Variable name
+    #         projection: 'cartopy' for horizontal, 'lat_pressure' or 'lon_pressure' for vertical
+    #         **kwargs: Additional styling options:
+    #             - title: str
+    #             - vmin, vmax: float
+    #             - cmap: str
+    #             - levels: int or list
+
+    #     Returns:
+    #         matplotlib Figure
+
+    #     Example:
+    #         >>> fig = plotter.plot_2d_field(
+    #         ...     pred_2d, coords, 'u',
+    #         ...     projection='cartopy',
+    #         ...     title='Zonal Wind at 500 hPa'
+    #         ... )
+    #     """
+    #     if projection == 'cartopy':
+    #         return self._plot_horizontal(data, var_name, **kwargs)
+    #     elif projection in ['lat_pressure', 'meridional']:
+    #         return self._plot_meridional(data, var_name, **kwargs)
+    #     elif projection in ['lon_pressure', 'zonal']:
+    #         return self._plot_zonal_section(data, var_name, **kwargs)
+    #     else:
+    #         raise ValueError(f"Unknown projection: {projection}")
+
+    # def _plot_horizontal(self, data, var_name, **kwargs):
+    #     """Plot horizontal slice using cartopy."""
+    #     title = kwargs.get('title', f'{var_name.upper()} Horizontal Slice')
+    #     cmap = kwargs.get('cmap', self.default_cmaps.get(var_name, 'viridis'))
+    #     vmin = kwargs.get('vmin', None)
+    #     vmax = kwargs.get('vmax', None)
+    #     levels = kwargs.get('levels', 20)
+
+    #     fig = plt.figure(figsize=(14, 8))
+    #     ax = plt.axes(projection=ccrs.PlateCarree())
+
+    #     # Add features
+    #     ax.add_feature(cfeature.LAND, facecolor='lightgray', zorder=0)
+    #     ax.add_feature(cfeature.COASTLINE, linewidth=0.6)
+
+    #     extent = [-180, 180, -90, 90]
+
+    #     # Plot data
+    #     im = ax.contourf(
+    #         data.T,  # Transpose for proper orientation
+    #         levels=levels,
+    #         cmap=cmap,
+    #         vmin=vmin,
+    #         vmax=vmax,
+    #         extent=extent,
+    #         transform=ccrs.PlateCarree()
+    #     )
+
+    #     ax.set_title(title, fontsize=14)
+
+    #     # Gridlines
+    #     gl = ax.gridlines(draw_labels=True, linewidth=0.3, alpha=0.5)
+    #     gl.top_labels = False
+    #     gl.right_labels = False
+
+    #     # Colorbar
+    #     cbar = plt.colorbar(im, ax=ax, orientation='horizontal', pad=0.05, shrink=0.8)
+    #     cbar.set_label(self.var_labels.get(var_name, var_name), fontsize=12)
+
+    #     plt.tight_layout()
+    #     return fig
+
+    # def _plot_meridional(self, data, var_name, **kwargs):
+    #     """Plot meridional cross-section (lat-pressure)."""
+    #     title = kwargs.get('title', f'{var_name.upper()} Meridional Section')
+    #     cmap = kwargs.get('cmap', self.default_cmaps.get(var_name, 'viridis'))
+    #     vmin = kwargs.get('vmin', None)
+    #     vmax = kwargs.get('vmax', None)
+    #     levels = kwargs.get('levels', 20)
+    #     lats = kwargs.get('lats', np.arange(-90, 91, 2))
+    #     pressures = kwargs.get('pressures', np.arange(100, 1001, 50))
+
+    #     fig, ax = plt.subplots(1, 1, figsize=(12, 6))
+
+    #     # Create meshgrid
+    #     lat_grid, pressure_grid = np.meshgrid(lats, pressures, indexing='xy')
+
+    #     # Plot
+    #     im = ax.contourf(lat_grid, pressure_grid, data.T,
+    #                      levels=levels, cmap=cmap, vmin=vmin, vmax=vmax)
+
+    #     ax.invert_yaxis()  # Pressure increases downward
+    #     ax.set_xlabel('Latitude (°)', fontsize=12)
+    #     ax.set_ylabel('Pressure (hPa)', fontsize=12)
+    #     ax.set_title(title, fontsize=14)
+    #     ax.grid(True, alpha=0.3)
+
+    #     cbar = plt.colorbar(im, ax=ax)
+    #     cbar.set_label(self.var_labels.get(var_name, var_name), fontsize=12)
+
+    #     plt.tight_layout()
+    #     return fig
+
+    # def _plot_zonal_section(self, data, var_name, **kwargs):
+    #     """Plot zonal cross-section (lon-pressure)."""
+    #     title = kwargs.get('title', f'{var_name.upper()} Zonal Section')
+    #     cmap = kwargs.get('cmap', self.default_cmaps.get(var_name, 'viridis'))
+    #     vmin = kwargs.get('vmin', None)
+    #     vmax = kwargs.get('vmax', None)
+    #     levels = kwargs.get('levels', 20)
+    #     lons = kwargs.get('lons', np.arange(-180, 181, 2))
+    #     pressures = kwargs.get('pressures', np.arange(100, 1001, 50))
+
+    #     fig, ax = plt.subplots(1, 1, figsize=(12, 6))
+
+    #     # Create meshgrid
+    #     lon_grid, pressure_grid = np.meshgrid(lons, pressures, indexing='xy')
+
+    #     # Plot
+    #     im = ax.contourf(lon_grid, pressure_grid, data.T,
+    #                      levels=levels, cmap=cmap, vmin=vmin, vmax=vmax)
+
+    #     ax.invert_yaxis()
+    #     ax.set_xlabel('Longitude (°)', fontsize=12)
+    #     ax.set_ylabel('Pressure (hPa)', fontsize=12)
+    #     ax.set_title(title, fontsize=14)
+    #     ax.grid(True, alpha=0.3)
+
+    #     cbar = plt.colorbar(im, ax=ax)
+    #     cbar.set_label(self.var_labels.get(var_name, var_name), fontsize=12)
+
+    #     plt.tight_layout()
+    #     return fig
+
     def plot_2d_field(self,
                       data: np.ndarray,
                       coords: np.ndarray,
                       var_name: str,
                       projection: str = 'cartopy',
                       **kwargs) -> Figure:
-        """Plot 2D field (horizontal slice or cross-section).
-
-        Args:
-            data: 2D array to plot
-            coords: Coordinate array (used for extent/axes)
-            var_name: Variable name
-            projection: 'cartopy' for horizontal, 'lat_pressure' or 'lon_pressure' for vertical
-            **kwargs: Additional styling options:
-                - title: str
-                - vmin, vmax: float
-                - cmap: str
-                - levels: int or list
-
-        Returns:
-            matplotlib Figure
-
-        Example:
-            >>> fig = plotter.plot_2d_field(
-            ...     pred_2d, coords, 'u',
-            ...     projection='cartopy',
-            ...     title='Zonal Wind at 500 hPa'
-            ... )
-        """
+        """Plot 2D field (horizontal slice or cross-section)."""
+        # Pass 'coords' to the specific handlers
         if projection == 'cartopy':
-            return self._plot_horizontal(data, var_name, **kwargs)
+            return self._plot_horizontal(data, coords, var_name, **kwargs)
         elif projection in ['lat_pressure', 'meridional']:
-            return self._plot_meridional(data, var_name, **kwargs)
+            return self._plot_meridional(data, coords, var_name, **kwargs)
         elif projection in ['lon_pressure', 'zonal']:
-            return self._plot_zonal_section(data, var_name, **kwargs)
+            return self._plot_zonal_section(data, coords, var_name, **kwargs)
         else:
             raise ValueError(f"Unknown projection: {projection}")
 
-    def _plot_horizontal(self, data, var_name, **kwargs):
-        """Plot horizontal slice using cartopy."""
+    def _plot_horizontal(self, data, coords, var_name, **kwargs):
+        """Plot horizontal slice with dynamic extent."""
         title = kwargs.get('title', f'{var_name.upper()} Horizontal Slice')
         cmap = kwargs.get('cmap', self.default_cmaps.get(var_name, 'viridis'))
-        vmin = kwargs.get('vmin', None)
-        vmax = kwargs.get('vmax', None)
-        levels = kwargs.get('levels', 20)
+        vmin = kwargs.get('vmin', data.min())
+        vmax = kwargs.get('vmax', data.max())
+        
+        # BUG FIX: Calculate extent from coordinates instead of hardcoding
+        # Determine which columns are lon/lat. If coords is (N, 2), assume [lon, lat]
+        lon_idx = self.coord_labels.get('longitude', 0) if coords.shape[1] > 1 else 0
+        lat_idx = self.coord_labels.get('latitude', 1) if coords.shape[1] > 1 else 1
+        
+        lons = coords[:, lon_idx]
+        lats = coords[:, lat_idx]
+        extent = [lons.min(), lons.max(), lats.min(), lats.max()]
 
         fig = plt.figure(figsize=(14, 8))
         ax = plt.axes(projection=ccrs.PlateCarree())
-
-        # Add features
-        ax.add_feature(cfeature.LAND, facecolor='lightgray', zorder=0)
+        ax.add_feature(cfeature.LAND, facecolor='lightgray', alpha=0.3)
         ax.add_feature(cfeature.COASTLINE, linewidth=0.6)
+        
+        # Set map extent
+        ax.set_extent(extent, crs=ccrs.PlateCarree())
 
-        extent = [-180, 180, -90, 90]
-
-        # Plot data
-        im = ax.contourf(
-            data.T,  # Transpose for proper orientation
-            levels=levels,
-            cmap=cmap,
-            vmin=vmin,
-            vmax=vmax,
+        # Plot data. Remove .T if visualizer reshapes to (n_lat, n_lon)
+        # Using imshow with extent and origin='lower' is often more robust for gridded data
+        im = ax.imshow(
+            data, 
             extent=extent,
-            transform=ccrs.PlateCarree()
+            transform=ccrs.PlateCarree(),
+            cmap=cmap, vmin=vmin, vmax=vmax,
+            origin='lower', aspect='auto'
         )
 
         ax.set_title(title, fontsize=14)
-
-        # Gridlines
-        gl = ax.gridlines(draw_labels=True, linewidth=0.3, alpha=0.5)
-        gl.top_labels = False
-        gl.right_labels = False
-
-        # Colorbar
-        cbar = plt.colorbar(im, ax=ax, orientation='horizontal', pad=0.05, shrink=0.8)
-        cbar.set_label(self.var_labels.get(var_name, var_name), fontsize=12)
-
-        plt.tight_layout()
+        plt.colorbar(im, ax=ax, orientation='horizontal', pad=0.05, shrink=0.8)
         return fig
 
-    def _plot_meridional(self, data, var_name, **kwargs):
-        """Plot meridional cross-section (lat-pressure)."""
-        title = kwargs.get('title', f'{var_name.upper()} Meridional Section')
-        cmap = kwargs.get('cmap', self.default_cmaps.get(var_name, 'viridis'))
-        vmin = kwargs.get('vmin', None)
-        vmax = kwargs.get('vmax', None)
-        levels = kwargs.get('levels', 20)
-        lats = kwargs.get('lats', np.arange(-90, 91, 2))
-        pressures = kwargs.get('pressures', np.arange(100, 1001, 50))
-
-        fig, ax = plt.subplots(1, 1, figsize=(12, 6))
-
-        # Create meshgrid
-        lat_grid, pressure_grid = np.meshgrid(lats, pressures, indexing='xy')
-
-        # Plot
-        im = ax.contourf(lat_grid, pressure_grid, data.T,
-                         levels=levels, cmap=cmap, vmin=vmin, vmax=vmax)
-
-        ax.invert_yaxis()  # Pressure increases downward
-        ax.set_xlabel('Latitude (°)', fontsize=12)
-        ax.set_ylabel('Pressure (hPa)', fontsize=12)
-        ax.set_title(title, fontsize=14)
-        ax.grid(True, alpha=0.3)
-
-        cbar = plt.colorbar(im, ax=ax)
-        cbar.set_label(self.var_labels.get(var_name, var_name), fontsize=12)
-
-        plt.tight_layout()
-        return fig
-
-    def _plot_zonal_section(self, data, var_name, **kwargs):
-        """Plot zonal cross-section (lon-pressure)."""
-        title = kwargs.get('title', f'{var_name.upper()} Zonal Section')
-        cmap = kwargs.get('cmap', self.default_cmaps.get(var_name, 'viridis'))
-        vmin = kwargs.get('vmin', None)
-        vmax = kwargs.get('vmax', None)
-        levels = kwargs.get('levels', 20)
-        lons = kwargs.get('lons', np.arange(-180, 181, 2))
-        pressures = kwargs.get('pressures', np.arange(100, 1001, 50))
-
-        fig, ax = plt.subplots(1, 1, figsize=(12, 6))
-
-        # Create meshgrid
-        lon_grid, pressure_grid = np.meshgrid(lons, pressures, indexing='xy')
-
-        # Plot
-        im = ax.contourf(lon_grid, pressure_grid, data.T,
-                         levels=levels, cmap=cmap, vmin=vmin, vmax=vmax)
-
+    def _plot_meridional(self, data, coords, var_name, **kwargs):
+        """Plot meridional cross-section with dynamic axes."""
+        # BUG FIX: Extract actual coordinate values
+        lat_idx = self.coord_labels.get('latitude', 0)
+        pres_idx = self.coord_labels.get('pressure_level', 1)
+        
+        lats = np.unique(coords[:, lat_idx])
+        pressures = np.unique(coords[:, pres_idx])
+        
+        fig, ax = plt.subplots(figsize=(12, 6))
+        # Ensure data is (n_press, n_lat) for meshgrid matching
+        im = ax.contourf(lats, pressures, data, levels=20, 
+                         cmap=kwargs.get('cmap', self.default_cmaps.get(var_name, 'viridis')))
+        
         ax.invert_yaxis()
-        ax.set_xlabel('Longitude (°)', fontsize=12)
-        ax.set_ylabel('Pressure (hPa)', fontsize=12)
-        ax.set_title(title, fontsize=14)
-        ax.grid(True, alpha=0.3)
+        ax.set_xlabel('Latitude (°)')
+        ax.set_ylabel('Pressure (hPa)')
+        plt.colorbar(im, ax=ax, label=self.var_labels.get(var_name, var_name))
+        return fig
 
-        cbar = plt.colorbar(im, ax=ax)
-        cbar.set_label(self.var_labels.get(var_name, var_name), fontsize=12)
-
-        plt.tight_layout()
+    def plot_comparison(self, data1, data2, coords, var_name, **kwargs):
+        """Side-by-side with dynamic extent."""
+        # BUG FIX: Use calculated extent for all panels
+        lon_idx = self.coord_labels.get('longitude', 0)
+        lat_idx = self.coord_labels.get('latitude', 1)
+        lons, lats = coords[:, lon_idx], coords[:, lat_idx]
+        extent = [lons.min(), lons.max(), lats.min(), lats.max()]
+        
+        fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+        for i, d in enumerate([data1, data2, data1-data2]):
+            im = axes[i].imshow(d, extent=extent, origin='lower', aspect='auto',
+                                cmap='RdBu_r' if i==2 else 'viridis')
+            plt.colorbar(im, ax=axes[i])
         return fig
 
     def plot_1d_profile(self,
