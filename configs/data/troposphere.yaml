@@ -19,7 +19,7 @@ norm_type: "default"       # "default" (range [-1,1]), "standard" (z-score), or 
 
 # Data loading
 batch_size: 1024
-num_workers: 4             # Number of workers for data loading
+num_workers: 0             # Number of workers for data loading
 persistent_workers: true   # Keep workers alive between epochs
 pin_memory: true           # Faster data transfer to GPU
 
