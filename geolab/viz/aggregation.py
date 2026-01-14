@@ -203,24 +203,20 @@ class DataAggregator:
     def temporal_evolution(self,
                            data: torch.Tensor,
                            coords: torch.Tensor,
-                           spatial_agg: str = 'mean') -> Tuple[torch.Tensor, torch.Tensor]:
+                           spatial_agg: str = 'mean',
+                           return_indices: bool = False) -> Tuple[torch.Tensor, torch.Tensor]:
         """Create time series by aggregating over space.
 
         Args:
             data: (N, num_vars) data values
             coords: (N, 4) coordinates
             spatial_agg: How to aggregate spatial dimensions - 'mean', 'std', etc.
+            return_indices: If True, return time step indices (0, 1, 2, ...) instead of actual time values
 
         Returns:
             (time_series, time_coords) where:
                 time_series: (T, num_vars) values at each time step
-                time_coords: (T,) time values
-
-        Example:
-            >>> # Get global mean time series
-            >>> time_series, times = aggregator.temporal_evolution(
-            ...     data, coords, spatial_agg='mean'
-            ... )
+                time_coords: (T,) time values or indices
         """
         time_idx = self.coord_labels['valid_time']
 
@@ -248,7 +244,13 @@ class DataAggregator:
             elif spatial_agg == 'max':
                 time_series[i] = values.max(dim=0)[0]
 
-        return time_series, unique_times
+        # Return indices or actual time values
+        if return_indices:
+            time_coords = torch.arange(n_times, dtype=torch.float32)
+        else:
+            time_coords = unique_times
+
+        return time_series, time_coords
 
     def _unique_rows(self, tensor: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Find unique rows in a 2D tensor.

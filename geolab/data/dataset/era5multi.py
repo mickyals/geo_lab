@@ -8,10 +8,10 @@ import xarray as xr
 
 class ERA5MultiData:
     """A class for handling and processing multi-variable ERA5 climate reanalysis data.
-    
+
     This class provides functionality to load, slice, and access ERA5 climate data stored in NetCDF format.
     It supports both lazy loading and preloading of data into memory for faster access.
-    
+
     Attributes:
         data_dir (Path): Directory containing the ERA5 NetCDF files.
         variables (List[str]): List of variable names to load from the dataset.
@@ -37,7 +37,7 @@ class ERA5MultiData:
                  longitude_idx_range: Optional[Tuple[int, int]] = None,
                  preload: bool = True):
         """Initialize the ERA5MultiData instance and load the specified data.
-        
+
         Args:
             data_dir: Path to the directory containing ERA5 NetCDF files or a single NetCDF file.
             variables: List of variable names to load from the dataset.
@@ -67,69 +67,64 @@ class ERA5MultiData:
         self.load()
 
     def load(self) -> None:
-        """Load and prepare the ERA5 dataset based on initialization parameters.
-        
-        This method handles both single file and multiple file loading, applies the specified
-        variable selection and slicing, and either preloads data into memory or keeps it on disk.
-        """
+        """Load and prepare the ERA5 dataset based on initialization parameters."""
+        import dask.array as da
+        from dask.distributed import Client
+
         print(f"Loading ERA5 data from {self.data_dir}")
 
-        # Open dataset - handle both single file and directory of files
-        if self.data_dir.is_file():
-            ds = xr.open_dataset(self.data_dir)
-        else:
-            # Use xarray's multi-file dataset functionality to combine multiple NetCDF files
-            ds = xr.open_mfdataset(
-                str(self.data_dir / "*.nc"),
-                combine='by_coords',  # Combine along coordinates
-                parallel=True,        # Enable parallel loading for better performance
-            )
+        # Initialize Dask client for parallel processing
+        client = Client(processes=True)
 
-        # Select only the variables that were requested
-        ds = ds[self.variables]
-
-        # Apply any specified slicing to the dimensions
-        ds = self._apply_slicing(ds)
-
-        # Build mapping from coordinate names to their dimension indices
-        for idx, coord in enumerate(ds.sizes.keys()):
-            self.coord_labels[coord] = idx
-
-        # Build mapping from variable names to their indices
-        for idx, var in enumerate(ds.keys()):
-            self.variable_labels[var] = idx
-
-        # Store the size of each coordinate dimension
-        self.coord_sizes = np.array([value for _, value in ds.sizes.items()])
-
-        # Extract coordinate values into numpy arrays
-        self._build_coordinate_arrays(ds)
-
-        # Handle data loading based on preload setting
-        if self.preload:
-            print("Preloading data into memory...")
-            self._build_target_arrays(ds)
-            ds.close()  # Close the dataset after preloading
-        else:
-            self.ds = ds  # Keep the dataset open for lazy loading
-
-        # Print summary of loaded data
-        print(f"Successfully loaded {len(self.variables)} variables:")
-        for var in self.variables:
-            if self.preload:
-                shape = self.data_arrays[var].shape
+        try:
+            # Open dataset with Dask for lazy loading
+            if self.data_dir.is_file():
+                ds = xr.open_dataset(self.data_dir, chunks={'time': 1})
             else:
-                shape = self.ds[var].shape
-            print(f"   {var}: {shape}")
+                ds = xr.open_mfdataset(
+                    str(self.data_dir / "*.nc"),
+                    combine='by_coords',
+                    parallel=True,
+                    chunks={'time': 1}  # Chunk by time for better parallelization
+                )
+
+            # Select variables and apply slicing
+            ds = ds[list(self.variables)]
+            ds = self._apply_slicing(ds)
+
+            # Build coordinate and variable mappings
+            self._build_mappings(ds)
+            self._build_coordinate_arrays(ds)
+
+            if self.preload:
+                print("Preloading data into memory...")
+                self._build_target_arrays(ds)
+                ds.close()
+            else:
+                self.ds = ds
+
+            print(f"Successfully loaded {len(self.variables)} variables")
+            for var in self.variables:
+                shape = self.data_arrays[var].shape if self.preload else self.ds[var].shape
+                print(f"   {var}: {shape}")
+
+        finally:
+            client.close()
+
+    def _build_mappings(self, ds: xr.Dataset) -> None:
+        """Build coordinate and variable mappings."""
+        self.coord_labels = {coord: idx for idx, coord in enumerate(ds.sizes.keys())}
+        self.variable_labels = {var: idx for idx, var in enumerate(ds.keys())}
+        self.coord_sizes = np.array(list(ds.sizes.values()))
 
     @staticmethod
     def _make_slice(idx_range: Optional[Union[Tuple[int, int], List[int]]]) -> slice:
         """Create a slice object from a range tuple or list.
-        
+
         Args:
             idx_range: Optional tuple or list of [start, end] indices.
                       If None, empty, or falsy, returns a slice(None) which selects all elements.
-                      
+
         Returns:
             slice: A slice object representing the specified range.
         """
@@ -139,13 +134,13 @@ class ERA5MultiData:
 
     def _apply_slicing(self, ds: xr.Dataset) -> xr.Dataset:
         """Apply index-based slicing to the dataset based on initialization parameters.
-        
+
         This method creates a slice dictionary for each dimension that has a specified
         index range and applies it to the dataset using xarray's isel method.
-        
+
         Args:
             ds: The xarray Dataset to slice.
-            
+
         Returns:
             xr.Dataset: The sliced dataset.
         """
@@ -175,10 +170,10 @@ class ERA5MultiData:
 
     def _build_coordinate_arrays(self, ds: xr.Dataset) -> None:
         """Extract coordinate values from the dataset and store them as numpy arrays.
-        
+
         This method processes the time, pressure level, latitude, and longitude coordinates,
         performs any necessary transformations, and stores them in the coordinates dictionary.
-        
+
         Args:
             ds: The xarray Dataset containing the coordinate data.
         """
@@ -207,10 +202,10 @@ class ERA5MultiData:
 
     def _build_target_arrays(self, ds: xr.Dataset) -> None:
         """Load variable data from the dataset into memory as numpy arrays.
-        
+
         This method is called when preload=True to load the actual data values
         for each variable into memory for faster access during training/inference.
-        
+
         Args:
             ds: The xarray Dataset containing the variable data.
         """
@@ -224,21 +219,21 @@ class ERA5MultiData:
 
     def get_variable(self, var_name: str, indices: Optional[List[int]] = None) -> np.ndarray:
         """Retrieve data for a specific variable, optionally at specified indices.
-        
+
         Args:
             var_name: Name of the variable to retrieve.
             indices: Optional list of indices to select specific elements from the variable.
                     If None, returns the entire array.
-                    
+
         Returns:
             np.ndarray: The requested variable data as a numpy array.
-            
+
         Raises:
             ValueError: If the specified variable is not found in the dataset.
         """
         if var_name not in self.data_arrays:
             raise ValueError(f"Variable {var_name} not found in dataset.")
-            
+
         if indices is not None:
             return self.data_arrays[var_name][indices]
         return self.data_arrays[var_name]
@@ -249,13 +244,13 @@ class ERA5MultiData:
                             latitude_idx: Union[int, np.ndarray],
                             longitude_idx: Union[int, np.ndarray]) -> np.ndarray:
         """Get the coordinate values at the specified dimensional indices.
-        
+
         Args:
             time_idx: Index or indices for the time dimension.
             pressure_idx: Index or indices for the pressure level dimension.
             latitude_idx: Index or indices for the latitude dimension.
             longitude_idx: Index or indices for the longitude dimension.
-            
+
         Returns:
             np.ndarray: Stacked array of coordinate values with shape (..., 4) where the last dimension
                       contains [time, pressure, latitude, longitude] values.
@@ -274,18 +269,18 @@ class ERA5MultiData:
                             latitude_idx: Union[int, np.ndarray],
                             longitude_idx: Union[int, np.ndarray]) -> np.ndarray:
         """Retrieve variable values at the specified dimensional indices.
-        
+
         Args:
             var_name: Name of the variable to retrieve values for.
             time_idx: Index or indices for the time dimension.
             pressure_idx: Index or indices for the pressure level dimension.
             latitude_idx: Index or indices for the latitude dimension.
             longitude_idx: Index or indices for the longitude dimension.
-            
+
         Returns:
             np.ndarray: The requested values as a numpy array. The shape will match the
                       broadcasted shape of the input indices.
-                      
+
         Note:
             If preload=False, this will trigger disk reads for each access.
             For better performance with repeated access, use preload=True.

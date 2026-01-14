@@ -273,21 +273,38 @@ class Plotter:
 
         fig, ax = plt.subplots(figsize=(10, 6))
 
+        # Initialize default values
+        x = None
+        y = None
+        xlabel, ylabel = 'X', 'Y'
+
         # Select coordinates based on projection
         if projection == 'lat_lon':
-            x = coords[:, self.coord_labels['longitude']]
-            y = coords[:, self.coord_labels['latitude']]
-            xlabel, ylabel = 'Longitude (°)', 'Latitude (°)'
-        elif projection == 'lat_pressure':
+            if 'longitude' in self.coord_labels and 'latitude' in self.coord_labels:
+                x = coords[:, self.coord_labels['longitude']]
+                y = coords[:, self.coord_labels['latitude']]
+                xlabel, ylabel = 'Longitude (°)', 'Latitude (°)'
+        elif projection == 'lat_pressure' and 'latitude' in self.coord_labels and 'pressure_level' in self.coord_labels:
             x = coords[:, self.coord_labels['latitude']]
             y = coords[:, self.coord_labels['pressure_level']]
             xlabel, ylabel = 'Latitude (°)', 'Pressure (hPa)'
             ax.invert_yaxis()
-        elif projection == 'lon_pressure':
+        elif projection == 'lon_pressure' and 'longitude' in self.coord_labels and 'pressure_level' in self.coord_labels:
             x = coords[:, self.coord_labels['longitude']]
             y = coords[:, self.coord_labels['pressure_level']]
             xlabel, ylabel = 'Longitude (°)', 'Pressure (hPa)'
             ax.invert_yaxis()
+        else:
+            # Fallback to first two dimensions if projection is not recognized
+            if coords.shape[1] >= 2:
+                x = coords[:, 0]
+                y = coords[:, 1]
+                xlabel, ylabel = 'X', 'Y'
+            else:
+                raise ValueError(f"Invalid projection or coordinate dimensions for scatter plot: {projection}")
+
+        if x is None or y is None:
+            raise ValueError(f"Could not determine coordinates for projection: {projection}")
 
         scatter = ax.scatter(x, y, c=values, cmap=cmap, alpha=0.5, s=10)
         ax.set_xlabel(xlabel, fontsize=12)

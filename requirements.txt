@@ -9,6 +9,7 @@ matplotlib
 cartopy
 colorcet
 pydoe3
+distributed
 
 
 # --------- pytorch --------- #

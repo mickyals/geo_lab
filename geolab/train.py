@@ -63,10 +63,11 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     # datamodule.setup()
     
     log.info(f"Instantiating model <{cfg.model._target_}>")
-    model: LightningModule = hydra.utils.instantiate(cfg.model)
-
-    model.statistics = datamodule.statistics
-    model.pi_scale = datamodule.pi_scale
+    model: LightningModule = hydra.utils.instantiate(cfg.model, datamodule=datamodule)
+    
+    # These are now set in the model's __init__ via the datamodule
+    # model.statistics = datamodule.statistics
+    # model.pi_scale = datamodule.pi_scale
     
     log.info("Instantiating callbacks...")
     callbacks: List[Callback] = instantiate_callbacks(cfg.get("callbacks"))

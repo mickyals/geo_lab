@@ -264,44 +264,71 @@ class TroposphereDataModule(LightningDataModule):
             return data * (stats["max"] - stats["min"]) + stats["min"]
 
     def normalize_coords(self, coords: torch.Tensor) -> torch.Tensor:
-        """Normalize coordinates to [-1, 1].
+        """Normalize coordinates to [-1, 1] and convert units to SI.
+
+        Unit conversions applied:
+        - pressure_level: hPa → Pa (multiply by 100) for SI consistency with w (Pa/s)
 
         Args:
-            coords: Tensor of shape (..., 4) with [time, pressure, lat, lon]
+            coords: Tensor of shape (..., 4) with [time, pressure_hPa, lat, lon]
 
         Returns:
-            Normalized coordinates in range [-1, 1]
+            Normalized coordinates in range [-1, 1] with pressure in Pa
         """
         if self.coordinate_ranges is None:
             raise RuntimeError("Coordinate ranges not set. Call setup() first.")
 
-        normalized = coords.clone()
+        # Clone to avoid modifying input
+        coords_si = coords.clone()
+        normalized = torch.zeros_like(coords)
         coord_names = ['valid_time', 'pressure_level', 'latitude', 'longitude']
 
         for i, name in enumerate(coord_names):
             min_val, max_val = self.coordinate_ranges[name]
-            normalized[..., i] = 2 * (coords[..., i] - min_val) / (max_val - min_val + 1e-8) - 1
+
+            # Convert pressure from hPa to Pa before normalization
+            if name == 'pressure_level':
+                coords_si[..., i] = coords[..., i] * 100.0  # hPa → Pa
+                min_val = min_val * 100.0  # Adjust range for normalization
+                max_val = max_val * 100.0
+
+            # Normalize to [-1, 1]
+            normalized[..., i] = 2 * (coords_si[..., i] - min_val) / (max_val - min_val + 1e-8) - 1
 
         return normalized
 
     def denormalize_coords(self, coords: torch.Tensor) -> torch.Tensor:
-        """Denormalize coordinates from [-1, 1] back to original range.
+        """Denormalize coordinates from [-1, 1] and convert units back to display units.
+
+        Unit conversions applied:
+        - pressure_level: Pa → hPa (multiply by 0.01) for readability in plots
 
         Args:
-            coords: Normalized tensor of shape (..., 4)
+            coords: Normalized tensor of shape (..., 4) with pressure in Pa
 
         Returns:
-            Denormalized coordinates
+            Denormalized coordinates with pressure in hPa
         """
         if self.coordinate_ranges is None:
             raise RuntimeError("Coordinate ranges not set. Call setup() first.")
 
-        denormalized = coords.clone()
+        denormalized = torch.zeros_like(coords)
         coord_names = ['valid_time', 'pressure_level', 'latitude', 'longitude']
 
         for i, name in enumerate(coord_names):
             min_val, max_val = self.coordinate_ranges[name]
+
+            # Adjust ranges for pressure (stored in hPa, but normalized as Pa)
+            if name == 'pressure_level':
+                min_val = min_val * 100.0  # Convert to Pa for denormalization
+                max_val = max_val * 100.0
+
+            # Denormalize from [-1, 1]
             denormalized[..., i] = (coords[..., i] + 1) / 2 * (max_val - min_val) + min_val
+
+            # Convert pressure back from Pa to hPa for display
+            if name == 'pressure_level':
+                denormalized[..., i] = denormalized[..., i] * 0.01  # Pa → hPa
 
         return denormalized
 

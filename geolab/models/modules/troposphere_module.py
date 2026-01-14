@@ -142,18 +142,6 @@ class TroposphereLightningModule(LightningModule):
                 for coord_name in encode_coord_names
             ]
 
-        common_params = {
-            "N_in_features": self.N_in_features,
-            "N_out_features": self.N_out_features,
-            "N_hidden_features": self.hparams.N_hidden_features,
-            "N_hidden_layers": self.hparams.N_hidden_layers,
-            "position_encoder_type": self.hparams.position_encoder_type,
-            "mapping_dim": self.hparams.mapping_dim,
-            "scale": self.hparams.scale,
-            "encode_dims": encode_dims,  # List of INTEGER indices or None
-            **self.hparams.model_params
-        }
-
         model_map = {
             "FCN": FCN,
             "SirenNet": SirenNet,
@@ -165,7 +153,26 @@ class TroposphereLightningModule(LightningModule):
         if self.hparams.model_name not in model_map:
             raise ValueError(f"Unknown model name: {self.hparams.model_name}")
 
-        model = model_map[self.hparams.model_name](**common_params)
+        # Create model-specific parameters
+        model_class = model_map[self.hparams.model_name]
+        model_params = {
+            "N_in_features": self.N_in_features,
+            "N_out_features": self.N_out_features,
+            "N_hidden_features": self.hparams.N_hidden_features,
+            "N_hidden_layers": self.hparams.N_hidden_layers,
+            **self.hparams.model_params
+        }
+
+        # Only add position encoding params if the model accepts them
+        if hasattr(model_class, 'accepts_position_encoding'):
+            model_params.update({
+                "position_encoder_type": self.hparams.position_encoder_type,
+                "mapping_dim": self.hparams.mapping_dim,
+                "scale": self.hparams.scale,
+                "encode_dims": encode_dims
+            })
+
+        model = model_class(**model_params)
 
         print(f"Initialized {self.hparams.model_name} with:")
         print(f"  Input dim: {self.N_in_features}")

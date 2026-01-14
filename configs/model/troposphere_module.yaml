@@ -1,4 +1,4 @@
-_target_: geolab.models.modules.troposphere_module.TroposhpereLightningModule
+_target_: geolab.models.modules.troposphere_module.TroposphereLightningModule
 
 # Model architecture
 model_name: SirenNet

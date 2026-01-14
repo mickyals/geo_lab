@@ -1,10 +1,10 @@
 _target_: geolab.data.datamodule.troposphere_datamodule.TroposphereDataModule
 data_dir: ${paths.data_dir}
 # List of atmospheric variables to load
-solution_vars: ["t", "w", "u", "z", "v"]
+solution_vars: ["w", "u", "z", "v"]
 
 # Index ranges for subsetting the data (null means use all)
-time_idx_range: null       # [start, end] time steps
+time_idx_range: [0,2]       # [start, end] time steps
 pressure_idx_range: null   # [start, end] pressure levels
 latitude_idx_range: null   # [start, end] latitude points
 longitude_idx_range: null  # [start, end] longitude points
@@ -18,7 +18,7 @@ split_type: "random"       # How to split the data: "random" or "sequential"
 norm_type: "default"       # "default" (range [-1,1]), "standard" (z-score), or None
 
 # Data loading
-batch_size: 32
+batch_size: 1024
 num_workers: 4             # Number of workers for data loading
 persistent_workers: true   # Keep workers alive between epochs
 pin_memory: true           # Faster data transfer to GPU

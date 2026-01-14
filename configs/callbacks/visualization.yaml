@@ -1,16 +1,84 @@
 visualization:
   _target_: geolab.callbacks.visualization_callback.AtmosphericVisualizationCallback
-  plot_every_n_epochs: 1
-  plot_every_n_steps: null
-  pressure_levels: [850, 500, 200]
-  meridional_longitudes: [-180, 180]
-  grid_resolution:
-    longitude: 0.25 # degrees
-    latitude: 0.25 # degrees
   
-  # Enable/disable specific visualizations
-  enable_horizontal_slices: true
-  enable_meridional_slices: true
-  enable_zonal_mean: true
-  enable_error_heatmap: true
-  enable_physics_residuals: true  # Only runs if train_pinn=true
+  # Control visualization frequency (choose one)
+  plot_every_n_epochs: 1  # Visualize every N epochs
+  # plot_every_n_steps: 100  # Alternative: visualize every N steps
+  
+  # Directory to save visualizations (optional)
+  save_dir: ${paths.output_dir}/visualizations
+  
+  # List of visualizations to generate
+  visualizations:
+    # 1. Horizontal slice at 500hPa
+    - type: field
+      geometry:
+        type: plane
+        axes: [longitude, latitude]
+        pressure_level: 500
+        valid_time: 0.0
+        resolution:
+          longitude: 0.25
+          latitude: 0.25
+      vars: [u, v, w, z]
+      projection: cartopy
+      data_source: model  # or 'ground_truth' or 'comparison'
+      split: val
+      
+    # 2. Meridional slice at 0° longitude
+    - type: field
+      geometry:
+        type: plane
+        axes: [latitude, pressure_level]
+        longitude: 0
+        valid_time: 0.0
+        resolution:
+          latitude: 0.25
+          pressure_level: 25.0
+      vars: [u,v,w,z]
+      projection: meridional
+      data_source: model
+      split: val
+      
+    # 3. Zonal mean profile
+    - type: field
+      geometry:
+        type: plane
+        axes: [longitude, latitude]
+        pressure_level: 500
+        valid_time: 0.0
+        resolution:
+          longitude: 0.25
+          latitude: 0.25
+      aggregation:
+        type: zonal_mean
+      vars: [u, v, w, v]
+      plot_type: 1d_profile
+      data_source: model
+      split: val
+      
+    # 4. Training data distribution
+    - type: scatter
+      split: train
+      projection: lat_lon
+      color_by: t  # Optional: color points by temperature
+      epoch_filter: [0, 10, 50]  # Only plot on these epochs
+      
+    # 5. Error heatmap
+    - type: error_heatmap
+      split: val
+      vars: [u, v, w, z]
+      
+    # 6. Physics residuals (for PINN models)
+    - type: physics_residuals
+      split: val
+      vars: [u, v, w, z]
+      
+  # Legacy parameters (kept for backward compatibility)
+  # Will be removed in future versions
+#  _legacy:
+#    pressure_levels: [850, 500, 200]
+#    meridional_longitudes: [-180, 180]
+#    grid_resolution:
+#      longitude: 0.25
+#      latitude: 0.25
